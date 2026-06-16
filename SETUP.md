@@ -122,13 +122,17 @@ skill where the interactive session lives.
 ### Mechanism
 
 A FastAPI middleware (`@app.middleware("http")` in `app/main.py`) intercepts every
-request to `/calculate` and appends a JSON record to `usage_log.jsonl`:
+request to a **product endpoint** — everything except a small infra skip-list
+(`SKIP_USAGE_PATHS`: `/health`, `/docs`, `/redoc`, `/openapi.json`, …) — and appends
+a JSON record to `usage_log.jsonl`:
 
 ```json
 {
   "timestamp": "2026-06-16T10:23:45.123Z",
+  "path": "/calculate",
+  "method": "GET",
   "operation": "divide",
-  "inputs": {"a": "10", "b": "0"},
+  "inputs": {"op": "divide", "a": "10", "b": "0"},
   "status_code": 400,
   "latency_ms": 1.23,
   "error_type": "DivisionByZero",
@@ -136,7 +140,20 @@ request to `/calculate` and appends a JSON record to `usage_log.jsonl`:
 }
 ```
 
-The file is append-only. Historical entries accumulate across cycles.
+`inputs` captures all query params generically, so the record shape is the same
+for any endpoint. The file is append-only; historical entries accumulate across cycles.
+
+### Endpoint-generic by design — the loop self-feeds for any feature shape
+
+Recording is keyed off the request path, not hardcoded to `/calculate`. This is what
+makes the loop genuinely self-feeding for **any** feature, not just new `op` values:
+
+- A new endpoint shipped by the loop (e.g. `GET /sqrt`) is exercised by the simulator
+  *and* its traffic (`path: /sqrt`, status, latency) is recorded — so the next cycle's
+  suggester sees its real usage and can refine it.
+- A request to a path that **doesn't exist yet** is recorded as a 404. `analyze_usage.py`
+  surfaces these under **"Requested-but-missing endpoints"** — direct demand signal that
+  says "build this endpoint." (See `tests/test_usage_logging.py` for the functional proof.)
 
 ### The `source` field — keeping signal honest
 
@@ -152,10 +169,12 @@ cannot pollute the product signal that the feature-suggester reads.
 ### `analyze_usage.py` — raw log → actionable signal
 
 The feature-suggester does not read raw JSONL. It runs `scripts/analyze_usage.py`,
-which produces a per-operation table (call volume, error rate, error-type
-breakdown), flags likely-unsupported operations (100% HTTP 422), and surfaces
-input-distribution signals (b=0 rate, negatives). This mirrors how a PM reads
-an event stream: rates and failed-intent signals, not individual log lines.
+which produces a per-endpoint/operation table (call volume, error rate, error-type
+breakdown — keyed by `op` for `/calculate` and by `path` for other endpoints),
+flags likely-unsupported operations (100% HTTP 422), lists requested-but-missing
+endpoints (HTTP 404), and surfaces input-distribution signals (b=0 rate, negatives).
+This mirrors how a PM reads an event stream: rates and failed-intent signals, not
+individual log lines.
 
 ### Why middleware, not application-level logging
 
@@ -223,8 +242,10 @@ The only components that are calculator-specific:
    correlated edge cases keyed by an enum value (here, the `op` query param: e.g.
    `divide` → `{"a": 10, "b": 0}`). Replace with your domain's interesting inputs,
    or delete it — the simulator still works from the schema alone.
-3. **The usage middleware's path filter in `app/main.py`** — it currently records
-   requests to `/calculate`. Point it at your endpoint(s) so their traffic becomes signal.
+3. **`SKIP_USAGE_PATHS` in `app/main.py`** — the usage middleware records *every*
+   endpoint except this infra skip-list (`/health`, `/docs`, `/openapi.json`, …).
+   For a different API, just adjust which paths count as infra noise; all product
+   endpoints are captured automatically with no per-endpoint wiring.
 
 Everything else is generic by construction:
 
@@ -238,12 +259,11 @@ Everything else is generic by construction:
 - The implementer and docs-updater prompts are FastAPI-oriented but apply to any Python/FastAPI service
 - The dev-loop orchestrator is fully generic — it applies whatever structured text the subagents return
 
-**Honest caveat (signal vs. exercise):** the simulator *exercises* every endpoint, but
-the usage middleware currently records only `/calculate` traffic as product signal. A new
-endpoint is hit (proving the schema → request path and loop closure), but to turn its
-traffic into signal for the feature-suggester you widen the middleware's path filter — a
-one-line change. This keeps the calculator's signal clean today while documenting exactly
-how to extend it.
+**Signal and exercise are both endpoint-generic.** The simulator *exercises* every
+endpoint discovered from `/openapi.json`, and the middleware *records* every product
+endpoint (everything outside `SKIP_USAGE_PATHS`). So a newly-shipped endpoint of any
+shape is both hit and turned into signal on the next cycle — no per-endpoint wiring —
+and even requests to paths that don't exist yet are captured as 404 demand signal.
 
 **To target a non-OpenAPI API:** swap the schema source in `simulate.py` (e.g. fetch a
 Postman collection or a custom spec) and keep the same generate-from-schema logic. The

@@ -2,10 +2,13 @@
 """
 Usage analytics — turns usage_log.jsonl into actionable product signal.
 
-Reads the append-only usage log and prints a per-operation breakdown:
-call volume, error rate, error-type distribution, likely-unsupported
-operations (operations whose calls are 100% HTTP 422), and input-distribution
-signals. This is the report the feature-suggester reads to ground its proposals.
+Reads the append-only usage log and prints a per-endpoint/operation breakdown:
+call volume, error rate, error-type distribution, likely-unsupported operations
+(100% HTTP 422), requested-but-missing endpoints (HTTP 404 — "build this"), and
+input-distribution signals. Rows are keyed by `operation` for /calculate traffic
+and by `path` for every other endpoint, so a brand-new endpoint's traffic becomes
+signal automatically. This is the report the feature-suggester reads to ground
+its proposals.
 
 Usage:
     python scripts/analyze_usage.py [LOG_PATH] [--last N] [--source SOURCE]
@@ -62,16 +65,21 @@ def main() -> None:
         lambda: {"calls": 0, "errors": 0, "latency": [], "error_types": Counter()}
     )
     sources: Counter = Counter()
+    missing: Counter = Counter()  # paths requested but not implemented (HTTP 404)
     b_zero = neg_a = neg_b = 0
 
     for e in rows:
-        op = e.get("operation") or "<none>"
+        # Key by op for /calculate traffic, by path for every other endpoint.
+        # New endpoints (and old op-only records) both slot in cleanly.
+        op = e.get("operation") or e.get("path") or "<none>"
         s = per_op[op]
         s["calls"] += 1
         status = e.get("status_code", 0)
         if status >= 400:
             s["errors"] += 1
             s["error_types"][e.get("error_type") or f"HTTP{status}"] += 1
+        if status == 404 and e.get("path"):
+            missing[e["path"]] += 1
         lat = e.get("latency_ms")
         if isinstance(lat, (int, float)):
             s["latency"].append(lat)
@@ -91,12 +99,12 @@ def main() -> None:
     print(f"Total requests: {total}  |  Window: {window}{src_filter}")
     print()
 
-    print("── Per-operation ───────────────────────────────────────")
-    print(f"  {'operation':<12}{'calls':>7}{'errors':>8}{'error%':>9}{'avg_ms':>9}")
+    print("── Per-endpoint / operation ────────────────────────────")
+    print(f"  {'op / path':<16}{'calls':>7}{'errors':>8}{'error%':>9}{'avg_ms':>9}")
     for op, s in sorted(per_op.items(), key=lambda kv: -kv[1]["calls"]):
         err_pct = s["errors"] / s["calls"] * 100 if s["calls"] else 0
         avg = sum(s["latency"]) / len(s["latency"]) if s["latency"] else 0
-        print(f"  {op:<12}{s['calls']:>7}{s['errors']:>8}{err_pct:>8.1f}%{avg:>8.2f}")
+        print(f"  {op:<16}{s['calls']:>7}{s['errors']:>8}{err_pct:>8.1f}%{avg:>8.2f}")
     print()
 
     print("── Error breakdown ─────────────────────────────────────")
@@ -117,6 +125,14 @@ def main() -> None:
     if flagged:
         for op, n in flagged:
             print(f"  op='{op}': {n} calls ({n / total * 100:.1f}% of total) — all failed HTTP 422")
+    else:
+        print("  (none)")
+    print()
+
+    print("── Requested-but-missing endpoints (HTTP 404) ──────────")
+    if missing:
+        for path, n in missing.most_common():
+            print(f"  {path}: {n} requests to a path that doesn't exist — candidate new endpoint")
     else:
         print("  (none)")
     print()

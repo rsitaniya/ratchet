@@ -26,6 +26,7 @@ You are a product analyst for a minimal calculator API. Your job is to read the 
 - Many calls with large numbers → suggest scientific notation output or precision control
 - Repeated subtraction with negative results → suggest absolute-value operation
 - Mix of operations with similar inputs → suggest batch endpoint (compute multiple ops in one call)
+- Requested-but-missing endpoint (HTTP 404 on a path, in the analyze_usage report) → build that endpoint; the 404 count is direct demand signal
 - High latency on any operation → note it but focus on feature proposals, not perf
 
 ## Output format (STRICT — orchestrator parses this)

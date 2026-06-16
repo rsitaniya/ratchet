@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Usage collection is now **endpoint-generic**: the middleware records every product endpoint (everything outside `SKIP_USAGE_PATHS`), not just `/calculate`. Records gain `path` and `method` fields and `inputs` now captures all query params. This closes the feedback loop for any feature shape — new endpoints' traffic becomes signal automatically.
+- `analyze_usage.py` keys its breakdown by `op` for `/calculate` and by `path` for other endpoints, and adds a **Requested-but-missing endpoints (HTTP 404)** section so unmet demand surfaces as a build signal.
+
+### Added
+- `tests/test_usage_logging.py` — functional TestClient tests asserting that product endpoints are recorded, unknown paths are captured as 404 signal, and infra endpoints (`/health`) are excluded.
+
+### Fixed
+- `usage_log.jsonl` is now gitignored and untracked (runtime artifact), matching its description in SETUP.md.
+
 ## [0.3.0] - 2026-06-16
 
 ### Added

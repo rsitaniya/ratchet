@@ -11,6 +11,12 @@ from pydantic import BaseModel, Field
 
 USAGE_LOG = Path("usage_log.jsonl")
 
+# Paths that describe or operate the service rather than being product surface.
+# Traffic to these is infra noise, not usage signal — so it is NOT recorded.
+# Everything else (including not-yet-implemented paths that 404) IS recorded,
+# which is what lets the loop self-feed for any feature shape, not just new ops.
+SKIP_USAGE_PATHS = {"/openapi.json", "/docs", "/redoc", "/docs/oauth2-redirect", "/health", "/favicon.ico"}
+
 app = FastAPI(
     title="Calculator API",
     description="""
@@ -18,11 +24,15 @@ A minimal arithmetic calculator exposing six operations over HTTP.
 
 ## Usage Signal
 
-Every request to `/calculate` is appended to `usage_log.jsonl` with full context:
-`timestamp`, `operation`, `inputs`, `status_code`, `latency_ms`, `error_type`.
+Every request to a product endpoint is appended to `usage_log.jsonl` with full
+context: `timestamp`, `path`, `method`, `operation`, `inputs`, `status_code`,
+`latency_ms`, `error_type`. Infra endpoints (`/health`, `/docs`, `/openapi.json`)
+are skipped. Requests to paths that don't exist yet are still recorded (as 404s),
+so "someone wanted this" becomes signal too.
 
 This file is the **product signal** the feature-suggester agent reads to identify
-gaps — e.g. "divide returned DivisionByZero in 27% of calls → add safe-divide or modulo."
+gaps — e.g. "divide returned DivisionByZero in 27% of calls → add safe-divide or
+modulo", or "GET /sqrt got 404 nine times → build that endpoint."
 
 ## Operations
 
@@ -73,12 +83,14 @@ async def usage_logger(request: Request, call_next):
     response = await call_next(request)
     latency_ms = round((time.perf_counter_ns() - start_ns) / 1_000_000, 2)
 
-    if request.url.path == "/calculate":
+    if request.url.path not in SKIP_USAGE_PATHS:
         params = request.query_params
         record = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
+            "path": request.url.path,
+            "method": request.method,
             "operation": params.get("op"),
-            "inputs": {"a": params.get("a"), "b": params.get("b")},
+            "inputs": dict(params),
             "status_code": response.status_code,
             "latency_ms": latency_ms,
             "error_type": getattr(request.state, "error_type", None),
