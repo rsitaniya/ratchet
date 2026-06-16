@@ -1,13 +1,15 @@
 ---
 name: dev-loop
-description: Full agentic development cycle — simulate → suggest → HUMAN APPROVES → implement → test → docs → repeat. The only blocking step is human approval.
+description: One complete agentic development cycle — simulate → suggest → HUMAN APPROVES → implement → test → docs. Use `/loop /dev-loop` for the automated continuous loop.
 allowed-tools: Bash, Read, Edit, Write, Agent, AskUserQuestion
 ---
 
 # Dev Loop Orchestrator
 
 Runs one complete feature-shipping cycle. All subagents are **read-only planners**;
-this orchestrator is the **sole writer** — it applies every file change.
+this orchestrator is the **sole writer** — it applies every file change. For the
+fully automated bonus, run this skill through Claude Code's built-in `/loop` runner:
+`/loop /dev-loop`.
 
 ---
 
@@ -70,9 +72,9 @@ Do NOT proceed until the user selects a feature.
 Format the question as:
 - Question: "Which feature should we implement this cycle?"
 - Options: one per proposal (label = feature name, description = signal + one-liner)
-- Include a "Stop the loop" option to exit continuous mode gracefully
+- Include a "Skip this cycle" option
 
-If the user selects "Stop the loop", end the skill cleanly. Otherwise confirm
+If the user selects "Skip this cycle", end the skill cleanly. Otherwise confirm
 the selection and proceed.
 
 ---
@@ -83,33 +85,27 @@ Invoke the **implementer** subagent:
 
 ```
 Agent: implementer
-Input: "Implement: [chosen feature name and description]. Read app/main.py for context. Return CODE, TEST_CODE, CHANGELOG, and EDGE_CASES."
+Input: "Implement: [chosen feature name and description]. Read app/main.py for context. Return PATCH, TEST_FILE, CHANGELOG, and EDGE_CASES."
 ```
 
 The subagent returns structured output with exact delimiters:
-```
-FILE: app/main.py
-INSERTION_POINT: [where to add]
-CODE:
-```python
-[code]
+````
+PATCH:
+```diff
+[standard unified diff updating app/main.py and adding the TestClient test file]
 ```
 
 TEST_FILE: tests/test_[name].py
-TEST_CODE:
-```python
-[test code]
-```
 
 CHANGELOG: [one-line summary]
 
 EDGE_CASES: {"<op-or-feature>": [{"a": .., "b": ..}, ...]}
-```
+````
 
 **Orchestrator applies ALL the writes (the orchestrator is the sole writer):**
 
-1. **Code** — Parse `FILE:`, `INSERTION_POINT:`, `CODE:` → use **Edit** to insert the code into `app/main.py` at the described location.
-2. **Test** — Parse `TEST_FILE:` and `TEST_CODE:` → use **Write** to create the test file.
+1. **Code + test patch** — Extract the `PATCH:` diff into a temp file, then run `git apply --check <tempfile>`. If it passes, run `git apply <tempfile>`. If it fails, inspect the failure and either repair the diff directly or ask the implementer for a corrected unified diff.
+2. **Test path sanity** — Confirm `TEST_FILE:` exists after the patch and is under `tests/`.
 3. **Changelog (version-per-cycle)** — Determine the next minor version (read the current `version=` in `app/main.py`; bump the minor, e.g. 0.3.0 → 0.4.0). In `CHANGELOG.md`, insert a new `## [<new-version>] - <today>` section directly under `## [Unreleased]` and put the `CHANGELOG:` entry under its `### Added`. Leave `## [Unreleased]` empty.
 4. **Version bump** — Use **Edit** to update `version="<old>"` → `version="<new>"` in `app/main.py` so the running app's version always matches the latest CHANGELOG release.
 5. **Simulator edge cases** — Parse `EDGE_CASES:` (JSON) → use **Edit** to append the new entry into the `DOMAIN_EDGE_CASES` dict in `scripts/simulate.py`, so the next simulator run exercises the new feature intelligently (not just with random inputs).
@@ -165,10 +161,11 @@ Agent: docs-updater
 Input: "Feature just implemented: [feature name and description]. Check app/main.py for complete OpenAPI metadata."
 ```
 
-The subagent returns either `NO_CHANGES_NEEDED` or one or more `FIND:/REPLACE:` patches.
+The subagent returns either `NO_CHANGES_NEEDED` or a `PATCH:` unified diff.
 
 **Orchestrator applies patches:**
-- For each `FIND:` / `REPLACE:` pair, use **Edit** on `app/main.py`.
+- If it returns `PATCH:`, extract the diff into a temp file and run `git apply --check <tempfile>` before `git apply <tempfile>`.
+- If `git apply --check` fails, inspect the failure and repair the metadata patch directly or ask docs-updater for a corrected unified diff.
 
 ---
 
@@ -191,7 +188,7 @@ If the feature appears and is hit at least once, loop closure holds: the simulat
 
 ---
 
-## STEP 9 — Report & loop (BONUS: continuous mode)
+## STEP 9 — Report
 
 Report to the user:
 - Cycle number (track a counter starting at 1; increment each loop)
@@ -200,21 +197,23 @@ Report to the user:
 - CHANGELOG entry added
 - Whether the new operation appears in the simulator
 
-Then **immediately return to STEP 1 to begin the next cycle — do NOT ask permission to continue.**
-The loop runs indefinitely. The human-approval gate in STEP 3 is the natural pause in
-every cycle: the user can pick a feature, or pick the "Stop the loop" option to exit
-gracefully. Pressing Ctrl+C also exits at any time.
+This skill intentionally performs one complete cycle and exits. The fully automated
+bonus is handled by Claude Code's built-in loop runner:
 
-This makes `/dev-loop` a single command that runs the agentic loop continuously, with
-human approval as the ONLY blocking step — satisfying the bonus requirement.
+```text
+/loop /dev-loop
+```
+
+That single command repeats this cycle until stopped. The human-approval gate in
+STEP 3 is the only blocking step; press Ctrl+C or choose "Skip this cycle" to stop.
 
 ---
 
 ## IMPORTANT NOTES
 
 - **Subagents are read-only.** They return structured text only. This orchestrator applies every write.
-- **Human approval (STEP 3) is the ONLY blocking step.** All other steps chain automatically, cycle after cycle.
-- **The loop is continuous.** After STEP 9, go straight back to STEP 1. The only ways to stop are
-  choosing "Stop the loop" at the STEP 3 approval gate, or Ctrl+C.
+- **Subagent patches use standard unified diff format.** Validate with `git apply --check` before applying.
+- **Human approval (STEP 3) is the ONLY blocking step.** All other steps chain automatically in each cycle.
+- **Continuous mode uses Claude Code's built-in `/loop` runner.** Use `/loop /dev-loop`; stop with Ctrl+C.
 - **Do not skip the test step.** A feature is not shipped until `pytest tests/ -v` passes.
 - **Do not truncate usage_log.jsonl** — historical entries are the signal for future cycles.

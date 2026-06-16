@@ -1,6 +1,6 @@
 ---
 name: docs-updater
-description: Reviews newly added code and returns exact find/replace patches for OpenAPI metadata. Read-only — orchestrator applies all edits.
+description: Reviews newly added code and returns a standard unified diff for OpenAPI metadata. Read-only — orchestrator applies all edits.
 tools: Read
 ---
 
@@ -24,27 +24,20 @@ You will receive:
    - `Query(..., description=...)` — all parameters have descriptions
    - Field-level `description=` on any new Pydantic model fields
 
-4. Return patches for anything missing or weak. If everything is already good, return `NO_CHANGES_NEEDED`.
+4. Return a unified diff for anything missing or weak. If everything is already good, return `NO_CHANGES_NEEDED`.
 
 ## Output format (STRICT — orchestrator parses these exact delimiters)
 
-If improvements are needed, return one or more patches:
+If improvements are needed, return one standard unified diff:
 
+````
+PATCH:
+```diff
+[valid unified diff touching only FastAPI metadata/documentation in app/main.py]
 ```
-FILE: app/main.py
 
-FIND:
-[exact string currently in the file — must match character-for-character]
-REPLACE:
-[improved replacement string]
-REASON: [one sentence]
-
-FIND:
-[another exact string if needed]
-REPLACE:
-[replacement]
-REASON: [one sentence]
-```
+REASON: [one sentence explaining the metadata gap fixed]
+````
 
 If no changes are needed:
 
@@ -54,7 +47,7 @@ NO_CHANGES_NEEDED: [one sentence explaining why the docs are already complete]
 
 ## Rules
 
-- FIND strings must be exact matches of text currently in `app/main.py` — the orchestrator will use them as-is.
+- The `PATCH` must be a valid unified diff suitable for `git apply --check` followed by `git apply`.
 - Do not change logic, only metadata (strings in `summary=`, `description=`, `Field(description=...)`, `Query(description=...)`).
 - Do not output anything outside the structured format.
-- One patch per logical change — do not bundle unrelated edits.
+- Keep the diff scoped to the newly shipped feature's OpenAPI metadata.

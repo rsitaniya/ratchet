@@ -12,8 +12,11 @@ uvicorn app.main:app --reload
 # 3. Run the simulator (in a second terminal or new Claude Code session)
 /simulate
 
-# 4. Run the full agentic development cycle
+# 4. Run one full agentic development cycle
 /dev-loop
+
+# Bonus: run cycles continuously with Claude Code's built-in loop runner
+/loop /dev-loop
 ```
 
 ## Key files
@@ -21,7 +24,7 @@ uvicorn app.main:app --reload
 | File | Purpose |
 |------|---------|
 | `app/main.py` | FastAPI app — calculator + usage middleware |
-| `usage_log.jsonl` | Append-only product signal (never truncate between cycles) |
+| `usage_log.jsonl` | Runtime product signal (gitignored; auto-created by API traffic) |
 | `scripts/simulate.py` | Schema-driven simulator (called by /simulate skill) |
 | `tests/` | FastAPI TestClient tests — run with `pytest tests/ -v` |
 | `CHANGELOG.md` | Updated each cycle by the orchestrator |
@@ -30,8 +33,9 @@ uvicorn app.main:app --reload
 
 ## Conventions
 
-- **Subagents are read-only planners.** They return structured text; the dev-loop orchestrator applies all file writes (Edit/Write/Bash).
+- **Subagents are read-only planners.** Implementer/docs-updater return standard unified diffs; the dev-loop orchestrator validates with `git apply --check` before applying.
 - **Tests use FastAPI TestClient** (in-process). The simulator uses httpx against the live server.
 - **Server must be running** before invoking /simulate or /dev-loop.
-- **usage_log.jsonl is append-only.** Older entries are the signal; do not delete them between cycles.
+- **usage_log.jsonl is runtime telemetry.** It is append-only during a run, but gitignored so local simulator traffic does not dirty the submission.
 - **Loop closure:** The simulator re-fetches /openapi.json each cycle, so new endpoints are exercised automatically without editing the simulator.
+- **Continuous mode:** Use `/loop /dev-loop`; `/dev-loop` itself is one complete cycle.

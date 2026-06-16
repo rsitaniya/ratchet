@@ -47,12 +47,17 @@ claude   # opens Claude Code in the project directory
 /dev-loop
 ```
 
+**Bonus — run cycles continuously with Claude Code's built-in loop runner:**
+```
+/loop /dev-loop
+```
+
 The loop will:
 1. Simulate API traffic → populates `usage_log.jsonl`
 2. Invoke the feature-suggester → returns 2-3 proposals grounded in the data
 3. **Stop and ask you to pick a feature** ← only blocking step
-4. Invoke the implementer → returns structured code
-5. Orchestrator applies the writes, runs `pytest`, confirms tests pass
+4. Invoke the implementer → returns a standard unified diff + metadata
+5. Orchestrator validates/applies the diff with `git apply --check` + `git apply`, runs `pytest`, confirms tests pass
 6. Restart server to reload new routes
 7. Invoke docs-updater → ensures new route has complete OpenAPI metadata
 8. Re-run simulator to confirm new endpoint appears in schema and is exercised
@@ -72,33 +77,37 @@ The loop will:
     │       returns: PROPOSALS block (2-3 options with signal + complexity) │
     │   ◄───────────────────────────────────────────────────────────────────┘
     │
-    ├─ [AskUserQuestion] ⏸ HUMAN PICKS ONE FEATURE (or "Stop the loop")
+    ├─ [AskUserQuestion] ⏸ HUMAN PICKS ONE FEATURE (or "Skip this cycle")
     │
     ├─ [Agent] implementer ─────────────────────────────────────────────────┐
     │       reads: app/main.py (for style/context)                          │
-    │       returns: FILE/CODE/TEST_FILE/TEST_CODE/CHANGELOG structured text │
+    │       returns: unified diff + TEST_FILE + CHANGELOG + EDGE_CASES JSON   │
     │   ◄───────────────────────────────────────────────────────────────────┘
     │
-    ├─ [Edit/Write] Orchestrator applies the code + test + changelog writes
+    ├─ [Bash] git apply --check + git apply for code/test patch
+    ├─ [Edit] Orchestrator applies changelog/version/edge-case metadata
     ├─ [Bash] pytest tests/ -v  ← must pass before continuing
     ├─ [Bash] restart uvicorn
     │
     ├─ [Agent] docs-updater ────────────────────────────────────────────────┐
     │       reads: app/main.py                                              │
-    │       returns: FIND/REPLACE patches for OpenAPI metadata              │
+    │       returns: unified diff for OpenAPI metadata, or NO_CHANGES_NEEDED │
     │   ◄───────────────────────────────────────────────────────────────────┘
     │
-    ├─ [Edit] Orchestrator applies metadata patches
-    ├─ [Bash] simulator re-run → confirms new endpoint in /openapi.json
-    │
-    └─ loops back to the top (continuous mode) ──► /dev-loop STEP 1
+    ├─ [Bash] git apply --check + git apply for metadata patch
+    └─ [Bash] simulator re-run → confirms new endpoint in /openapi.json
+
+Continuous mode is supplied by Claude Code's built-in `/loop` runner:
+`/loop /dev-loop`.
 ```
 
-**Key design: subagents are read-only planners.** They return structured text;
+**Key design: subagents are read-only planners.** They return standard patch artifacts;
 the orchestrator applies every file write. This means:
 - No permission prompts inside subagents
 - Single point of control for all mutations
-- Clean, auditable handoffs — the structured output format is the contract
+- Clean, auditable handoffs — unified diff + JSON metadata is the contract
+- Repeatable patch application — every subagent diff is checked with `git apply --check`
+  before it mutates the worktree
 
 ---
 
@@ -216,20 +225,20 @@ concrete product gaps.
 | Component | What it is | Why used |
 |-----------|-----------|---------|
 | `.claude/skills/simulate/SKILL.md` | Native Claude Code skill | Single-command invocation (`/simulate`), no framework overhead |
-| `.claude/skills/dev-loop/SKILL.md` | Native Claude Code skill | Orchestrates the full cycle; has access to `AskUserQuestion` for the approval gate |
+| `.claude/skills/dev-loop/SKILL.md` | Native Claude Code skill | Orchestrates one complete cycle; has access to `AskUserQuestion` for the approval gate |
 | `.claude/agents/feature-suggester.md` | Native Claude Code subagent | Scoped read-only tools; clear system prompt; invoked via `Agent` tool from orchestrator |
-| `.claude/agents/implementer.md` | Native Claude Code subagent | Read-only — returns structured text the orchestrator applies |
-| `.claude/agents/docs-updater.md` | Native Claude Code subagent | Read-only — returns FIND/REPLACE patches for metadata |
+| `.claude/agents/implementer.md` | Native Claude Code subagent | Read-only — returns unified diff + metadata the orchestrator validates and applies |
+| `.claude/agents/docs-updater.md` | Native Claude Code subagent | Read-only — returns a unified diff for OpenAPI metadata |
+| Claude Code `/loop` | Built-in Claude Code loop runner | Provides the deterministic continuous runtime wrapper for the bonus command |
 | FastAPI `TestClient` | FastAPI built-in | In-process tests; no live server needed; idiomatic for FastAPI projects |
 | `scripts/simulate.py` | Plain Python + httpx | Generic multi-endpoint simulator; discovers every path+method from `/openapi.json` and synthesizes requests from their schemas |
 
-**Why native skills over a marketplace framework:**
+**Why native Claude Code skills/subagents plus `/loop`:**
 The `.claude/skills/<name>/SKILL.md` + `.claude/agents/<name>.md` convention
-is Claude Code's built-in orchestration layer. It requires no installation,
-no API keys beyond what Claude Code already has, and is self-documenting
-(the SKILL.md is both the implementation and the readme). A heavy framework
-(LangGraph, CrewAI, etc.) would add complexity without adding capability for
-a loop this size.
+is Claude Code's built-in orchestration layer. `/loop` is Claude Code's existing
+runtime loop framework, so the continuous bonus is not a hand-rolled `while true`
+script. This keeps the solution convention-aware without adding a heavyweight
+external framework (LangGraph, CrewAI, etc.) inside a 150-minute time box.
 
 ---
 
@@ -275,22 +284,20 @@ rest of the loop is unchanged.
 
 **Status: Implemented.**
 
-`/dev-loop` is itself the continuous loop. After shipping a feature (STEP 9), it
-returns straight to STEP 1 and starts the next cycle without asking — no `/loop`
-wrapper, no shell `while` loop needed. It runs indefinitely, cycle after cycle.
+`/dev-loop` performs one complete, test-gated cycle. The continuous runtime loop is
+Claude Code's built-in `/loop` runner:
 
-The `AskUserQuestion` approval gate (STEP 3) is the **only** blocking step. Every
-other step — simulate, suggest, implement, test, restart, docs, verify — chains
-automatically. To exit the loop:
+```
+/loop /dev-loop
+```
 
-- Choose **"Stop the loop"** at the STEP 3 approval gate (graceful), or
+That single command keeps launching cycles until you stop it. The `AskUserQuestion`
+approval gate (STEP 3) is the **only** blocking step. Every other step — simulate,
+suggest, implement, test, restart, docs, verify — chains automatically inside each
+cycle. To exit the loop:
+
+- Choose **"Skip this cycle"** at the STEP 3 approval gate (graceful), or
 - Press **Ctrl+C** at any time.
-
-So the single command that satisfies the bonus is simply:
-
-```
-/dev-loop
-```
 
 ---
 
