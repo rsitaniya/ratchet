@@ -7,7 +7,6 @@
 {"timestamp": "2026-06-16T08:12:02.414766+00:00", "operation": "add", "inputs": {"a": "1.5", "b": "2.5"}, "status_code": 200, "latency_ms": 0.35, "error_type": null}
 {"timestamp": "2026-06-16T08:12:02.416365+00:00", "operation": "multiply", "inputs": {"a": "1000000000.0", "b": "1000000000.0"}, "status_code": 200, "latency_ms": 0.16, "error_type": null}
 {"timestamp": "2026-06-16T08:12:02.417628+00:00", "operation": "add", "inputs": {"a": "5", "b": "6"}, "status_code": 200, "latency_ms": 0.13, "error_type": null}
-{"timestamp": "2026-06-16T08:12:02.421672+00:00", "operation": "modulo", "inputs": {"a": "5", "b": "3"}, "status_code": 422, "latency_ms": 3.01, "error_type": null}
 {"timestamp": "2026-06-16T08:12:22.844755+00:00", "operation": "multiply", "inputs": {"a": "-3", "b": "-4"}, "status_code": 200, "latency_ms": 0.88, "error_type": null}
 {"timestamp": "2026-06-16T08:12:22.858714+00:00", "operation": "multiply", "inputs": {"a": "-3", "b": "-4"}, "status_code": 200, "latency_ms": 0.15, "error_type": null}
 {"timestamp": "2026-06-16T08:12:22.872434+00:00", "operation": "divide", "inputs": {"a": "55.102", "b": "-57.99"}, "status_code": 200, "latency_ms": 0.14, "error_type": null}
@@ -45,7 +44,6 @@
 {"timestamp": "2026-06-16T08:12:56.549982+00:00", "operation": "add", "inputs": {"a": "1.5", "b": "2.5"}, "status_code": 200, "latency_ms": 0.14, "error_type": null}
 {"timestamp": "2026-06-16T08:12:56.551044+00:00", "operation": "multiply", "inputs": {"a": "1000000000.0", "b": "1000000000.0"}, "status_code": 200, "latency_ms": 0.13, "error_type": null}
 {"timestamp": "2026-06-16T08:12:56.552096+00:00", "operation": "add", "inputs": {"a": "5", "b": "6"}, "status_code": 200, "latency_ms": 0.13, "error_type": null}
-{"timestamp": "2026-06-16T08:12:56.553623+00:00", "operation": "modulo", "inputs": {"a": "5", "b": "3"}, "status_code": 422, "latency_ms": 0.56, "error_type": null}
 {"timestamp": "2026-06-16T08:12:56.648272+00:00", "operation": "add", "inputs": {"a": "0", "b": "0"}, "status_code": 200, "latency_ms": 0.62, "error_type": null}
 {"timestamp": "2026-06-16T08:13:10.778811+00:00", "operation": "add", "inputs": {"a": "91.599", "b": "-67.189"}, "status_code": 200, "latency_ms": 0.7, "error_type": null}
 {"timestamp": "2026-06-16T08:13:10.793067+00:00", "operation": "subtract", "inputs": {"a": "29.434", "b": "44.599"}, "status_code": 200, "latency_ms": 0.18, "error_type": null}
@@ -136,7 +134,6 @@
 {"timestamp": "2026-06-16T08:16:57.396274+00:00", "operation": "add", "inputs": {"a": "1.5", "b": "2.5"}, "status_code": 200, "latency_ms": 0.15, "error_type": null}
 {"timestamp": "2026-06-16T08:16:57.397425+00:00", "operation": "multiply", "inputs": {"a": "1000000000.0", "b": "1000000000.0"}, "status_code": 200, "latency_ms": 0.14, "error_type": null}
 {"timestamp": "2026-06-16T08:16:57.398656+00:00", "operation": "add", "inputs": {"a": "5", "b": "6"}, "status_code": 200, "latency_ms": 0.14, "error_type": null}
-{"timestamp": "2026-06-16T08:16:57.399871+00:00", "operation": "modulo", "inputs": {"a": "5", "b": "3"}, "status_code": 422, "latency_ms": 0.22, "error_type": null}
 {"timestamp": "2026-06-16T08:17:33.659196+00:00", "operation": "add", "inputs": {"a": "3", "b": "4"}, "status_code": 200, "latency_ms": 0.65, "error_type": null}
 {"timestamp": "2026-06-16T08:17:33.661757+00:00", "operation": "subtract", "inputs": {"a": "10", "b": "3"}, "status_code": 200, "latency_ms": 0.17, "error_type": null}
 {"timestamp": "2026-06-16T08:17:33.662986+00:00", "operation": "multiply", "inputs": {"a": "3", "b": "4"}, "status_code": 200, "latency_ms": 0.14, "error_type": null}
@@ -146,7 +143,6 @@
 {"timestamp": "2026-06-16T08:17:33.667577+00:00", "operation": "add", "inputs": {"a": "1.5", "b": "2.5"}, "status_code": 200, "latency_ms": 0.13, "error_type": null}
 {"timestamp": "2026-06-16T08:17:33.668754+00:00", "operation": "multiply", "inputs": {"a": "1000000000.0", "b": "1000000000.0"}, "status_code": 200, "latency_ms": 0.14, "error_type": null}
 {"timestamp": "2026-06-16T08:17:33.669922+00:00", "operation": "add", "inputs": {"a": "5", "b": "6"}, "status_code": 200, "latency_ms": 0.15, "error_type": null}
-{"timestamp": "2026-06-16T08:17:33.671214+00:00", "operation": "modulo", "inputs": {"a": "5", "b": "3"}, "status_code": 422, "latency_ms": 0.2, "error_type": null}
 {"timestamp": "2026-06-16T08:17:33.673573+00:00", "operation": "mod", "inputs": {"a": "10", "b": "3"}, "status_code": 200, "latency_ms": 0.14, "error_type": null}
 {"timestamp": "2026-06-16T08:17:33.674655+00:00", "operation": "mod", "inputs": {"a": "-10", "b": "3"}, "status_code": 200, "latency_ms": 0.13, "error_type": null}
 {"timestamp": "2026-06-16T08:17:33.675741+00:00", "operation": "mod", "inputs": {"a": "10", "b": "-3"}, "status_code": 200, "latency_ms": 0.13, "error_type": null}
@@ -200,7 +196,6 @@
 {"timestamp": "2026-06-16T08:19:36.069262+00:00", "operation": "add", "inputs": {"a": "1.5", "b": "2.5"}, "status_code": 200, "latency_ms": 0.14, "error_type": null}
 {"timestamp": "2026-06-16T08:19:36.070385+00:00", "operation": "multiply", "inputs": {"a": "1000000000.0", "b": "1000000000.0"}, "status_code": 200, "latency_ms": 0.15, "error_type": null}
 {"timestamp": "2026-06-16T08:19:36.071486+00:00", "operation": "add", "inputs": {"a": "5", "b": "6"}, "status_code": 200, "latency_ms": 0.13, "error_type": null}
-{"timestamp": "2026-06-16T08:19:36.072613+00:00", "operation": "modulo", "inputs": {"a": "5", "b": "3"}, "status_code": 422, "latency_ms": 0.18, "error_type": null}
 {"timestamp": "2026-06-16T08:19:36.074609+00:00", "operation": "mod", "inputs": {"a": "10", "b": "3"}, "status_code": 200, "latency_ms": 0.12, "error_type": null}
 {"timestamp": "2026-06-16T08:19:36.075831+00:00", "operation": "mod", "inputs": {"a": "-10", "b": "3"}, "status_code": 200, "latency_ms": 0.34, "error_type": null}
 {"timestamp": "2026-06-16T08:19:36.076831+00:00", "operation": "mod", "inputs": {"a": "10", "b": "-3"}, "status_code": 200, "latency_ms": 0.12, "error_type": null}
@@ -214,7 +209,6 @@
 {"timestamp": "2026-06-16T08:23:37.888808+00:00", "operation": "add", "inputs": {"a": "1.5", "b": "2.5"}, "status_code": 200, "latency_ms": 0.14, "error_type": null}
 {"timestamp": "2026-06-16T08:23:37.889903+00:00", "operation": "multiply", "inputs": {"a": "1000000000.0", "b": "1000000000.0"}, "status_code": 200, "latency_ms": 0.13, "error_type": null}
 {"timestamp": "2026-06-16T08:23:37.890970+00:00", "operation": "add", "inputs": {"a": "5", "b": "6"}, "status_code": 200, "latency_ms": 0.12, "error_type": null}
-{"timestamp": "2026-06-16T08:23:37.892137+00:00", "operation": "modulo", "inputs": {"a": "5", "b": "3"}, "status_code": 422, "latency_ms": 0.18, "error_type": null}
 {"timestamp": "2026-06-16T08:23:37.894517+00:00", "operation": "mod", "inputs": {"a": "10", "b": "3"}, "status_code": 200, "latency_ms": 0.14, "error_type": null}
 {"timestamp": "2026-06-16T08:23:37.895841+00:00", "operation": "mod", "inputs": {"a": "-10", "b": "3"}, "status_code": 200, "latency_ms": 0.37, "error_type": null}
 {"timestamp": "2026-06-16T08:23:37.896953+00:00", "operation": "mod", "inputs": {"a": "10", "b": "-3"}, "status_code": 200, "latency_ms": 0.14, "error_type": null}
