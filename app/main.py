@@ -40,7 +40,7 @@ gaps — e.g. "divide returned DivisionByZero in 27% of calls → add safe-divid
 Invoke `/dev-loop` in Claude Code to run a full feature-shipping cycle:
 simulate → suggest → human approves → implement → test → docs → repeat.
 """,
-    version="0.2.0",
+    version="0.3.0",
     docs_url="/docs",
     redoc_url="/redoc",
 )

@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
 """
-Schema-driven API simulator.
+Schema-driven, multi-endpoint API simulator.
 
-Fetches /openapi.json from a running server, discovers available operations,
-then fires N requests — mixing realistic inputs with targeted edge cases so
-usage_log.jsonl accumulates meaningful product signal.
+Fetches /openapi.json and exercises EVERY operation it finds — each path +
+method — by synthesizing requests from the parameter and request-body schemas.
+It is generic by construction: when the API gains a new endpoint (a new GET or
+POST, with query params, path params, or a JSON body), the simulator exercises
+it automatically with no hand-editing, as long as it is described in
+/openapi.json.
+
+The only domain-specific knowledge is the DOMAIN_EDGE_CASES overlay below, which
+injects *correlated* edge cases for an enum-driven `op` query param (e.g.
+op=divide with b=0). All request *structure* — which endpoints exist, their
+methods, params, and body shapes — is derived from the schema at runtime.
 
 Usage:
     python scripts/simulate.py [BASE_URL] [N_REQUESTS]
@@ -21,38 +29,48 @@ import httpx
 BASE_URL = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8000"
 N_REQUESTS = int(sys.argv[2]) if len(sys.argv) > 2 else 30
 
-# Domain edge cases keyed by operation name.
-# The schema only tells us types; we inject domain knowledge for interesting signal.
+# Endpoints that *describe* the API rather than being part of it — skip them.
+SKIP_PATHS = {"/openapi.json", "/docs", "/redoc", "/docs/oauth2-redirect"}
+
+# Correlated edge cases for an enum-driven `op` query param, keyed by op value.
+# Injected when a generated request carries that op. This is the ONLY
+# calculator-specific knowledge in the simulator; request structure is generic.
 DOMAIN_EDGE_CASES: dict[str, list[dict]] = {
     "divide": [
-        {"a": 10, "b": 0},         # DivisionByZero — creates error signal
-        {"a": -5, "b": 2},         # negative numerator
-        {"a": 1, "b": 3},          # repeating decimal
-        {"a": 1e9, "b": 3},        # large number
-        {"a": 0.001, "b": 0.001},  # tiny floats
-        {"a": 0, "b": 5},          # zero numerator
+        {"a": 10, "b": 0},          # DivisionByZero — creates error signal
+        {"a": -5, "b": 2},          # negative numerator
+        {"a": 1, "b": 3},           # repeating decimal
+        {"a": 1e9, "b": 3},         # large number
+        {"a": 0.001, "b": 0.001},   # tiny floats
+        {"a": 0, "b": 5},           # zero numerator
     ],
     "multiply": [
         {"a": 0, "b": 999},
-        {"a": -3, "b": -4},        # negative × negative
-        {"a": 1e6, "b": 1e6},      # large product
-        {"a": 0.1, "b": 0.2},      # float precision
+        {"a": -3, "b": -4},         # negative × negative
+        {"a": 1e6, "b": 1e6},       # large product
+        {"a": 0.1, "b": 0.2},       # float precision
     ],
     "add": [
         {"a": 1e15, "b": 1e15},
-        {"a": -1000, "b": 1000},   # cancellation
+        {"a": -1000, "b": 1000},    # cancellation
         {"a": 0, "b": 0},
     ],
     "subtract": [
-        {"a": 0, "b": 1000},       # negative result
-        {"a": -5, "b": -3},        # double negative
-        {"a": 1.0, "b": 0.9},      # float subtraction
+        {"a": 0, "b": 1000},        # negative result
+        {"a": -5, "b": -3},         # double negative
+        {"a": 1.0, "b": 0.9},       # float subtraction
     ],
     "mod": [
-        {"a": 10, "b": 0},         # DivisionByZero — creates error signal
-        {"a": -7, "b": 3},         # negative dividend (Python: result is 2)
-        {"a": 7, "b": -3},         # negative divisor (Python: result is -2)
-        {"a": 10, "b": 10},        # result = 0 edge case
+        {"a": 10, "b": 0},          # DivisionByZero — creates error signal
+        {"a": -7, "b": 3},          # negative dividend (Python: result is 2)
+        {"a": 7, "b": -3},          # negative divisor (Python: result is -2)
+        {"a": 10, "b": 10},         # result = 0 edge case
+    ],
+    "abs": [
+        {"a": 5, "b": 5},           # |a-b| = 0 (equal operands)
+        {"a": -10, "b": 10},        # large magnitude difference
+        {"a": 1e308, "b": -1e308},  # subtraction overflows → Overflow guard
+        {"a": -3, "b": -3},         # double negative, result 0
     ],
 }
 
@@ -63,101 +81,160 @@ def fetch_schema(base_url: str) -> dict:
     return r.json()
 
 
-def _resolve_ref(ref: str, schema: dict) -> dict:
-    """Resolve a JSON $ref string against the schema components."""
-    name = ref.split("/")[-1]
-    return schema.get("components", {}).get("schemas", {}).get(name, {})
+def resolve_ref(schema: dict, root: dict) -> dict:
+    """Follow a $ref chain to the concrete schema object."""
+    seen = 0
+    while isinstance(schema, dict) and "$ref" in schema and seen < 10:
+        name = schema["$ref"].split("/")[-1]
+        schema = root.get("components", {}).get("schemas", {}).get(name, {})
+        seen += 1
+    return schema
 
 
-def extract_operations(schema: dict) -> list[str]:
-    """Parse enum values for 'op' param from the OpenAPI schema.
-
-    Handles three encodings FastAPI may produce:
-      - direct $ref: {"$ref": "#/components/schemas/Operation"}
-      - allOf wrapping: {"allOf": [{"$ref": "..."}]}
-      - inline enum: {"enum": [...]}
-    """
-    for path_data in schema.get("paths", {}).values():
-        for method_data in path_data.values():
-            for param in method_data.get("parameters", []):
-                if param.get("name") != "op":
-                    continue
-                param_schema = param.get("schema", {})
-
-                # Direct $ref (FastAPI >= 0.99 with Annotated Query params)
-                if "$ref" in param_schema:
-                    resolved = _resolve_ref(param_schema["$ref"], schema)
-                    if resolved.get("enum"):
-                        return resolved["enum"]
-
-                # allOf wrapping a $ref
-                if "allOf" in param_schema:
-                    ref = param_schema["allOf"][0].get("$ref", "")
-                    resolved = _resolve_ref(ref, schema)
-                    if resolved.get("enum"):
-                        return resolved["enum"]
-
-                # Inline enum
-                if "enum" in param_schema:
-                    return param_schema["enum"]
-
-    # Could not introspect the schema — fail loudly rather than silently
-    # exercising a hardcoded op list that may not match the live API.
-    raise RuntimeError(
-        "Could not find an 'op' enum in /openapi.json. The simulator is "
-        "schema-driven and refuses to fall back to a hardcoded operation list."
-    )
+def edgy_number(is_int: bool = False):
+    """Random number, biased to include boundary values that produce signal."""
+    if random.random() < 0.3:
+        val = random.choice([0, -1, 1, 1e6, -1e6, 1e15, 0.001, -0.001])
+    else:
+        val = random.uniform(-100, 100)
+    return int(val) if is_int else round(float(val), 3)
 
 
-def gen_inputs(op: str) -> dict:
-    """40% edge cases, 60% random realistic inputs."""
-    edge_cases = DOMAIN_EDGE_CASES.get(op, [])
-    if edge_cases and random.random() < 0.4:
-        return random.choice(edge_cases)
-    return {
-        "a": round(random.uniform(-100, 100), 3),
-        "b": round(random.uniform(-100, 100), 3),
-    }
+def gen_value(schema: dict, root: dict):
+    """Synthesize a value from a JSON-schema fragment (handles $ref/enum/types)."""
+    schema = resolve_ref(schema, root)
+    if not isinstance(schema, dict):
+        return None
+
+    # Composition keywords: pick a branch (allOf → merge-ish, take first)
+    for key in ("anyOf", "oneOf"):
+        if key in schema and schema[key]:
+            return gen_value(random.choice(schema[key]), root)
+    if "allOf" in schema and schema["allOf"]:
+        return gen_value(schema["allOf"][0], root)
+
+    if "enum" in schema:
+        return random.choice(schema["enum"])
+
+    t = schema.get("type")
+    if t == "integer":
+        return edgy_number(is_int=True)
+    if t == "number":
+        return edgy_number()
+    if t == "boolean":
+        return random.choice([True, False])
+    if t == "array":
+        return [gen_value(schema.get("items", {}), root) for _ in range(random.randint(1, 3))]
+    if t == "object" or "properties" in schema:
+        return {k: gen_value(v, root) for k, v in schema.get("properties", {}).items()}
+    if t == "string":
+        return random.choice(["test", "alpha", "sample"])
+    return None
+
+
+def has_inputs(op_spec: dict) -> bool:
+    """True if the operation takes any params or a request body (worth firing repeatedly)."""
+    return bool(op_spec.get("parameters")) or bool(op_spec.get("requestBody"))
+
+
+def build_request(path: str, op_spec: dict, root: dict):
+    """Return (filled_path, query_params, json_body) synthesized from the schema."""
+    path_params, query_params = {}, {}
+    for p in op_spec.get("parameters", []):
+        val = gen_value(p.get("schema", {}), root)
+        if p.get("in") == "path":
+            path_params[p["name"]] = val
+        elif p.get("in") == "query":
+            query_params[p["name"]] = val
+
+    json_body = None
+    content = op_spec.get("requestBody", {}).get("content", {}).get("application/json", {})
+    if content:
+        json_body = gen_value(content.get("schema", {}), root)
+
+    # Optional domain overlay: if ANY generated param value matches a known
+    # edge-case key, inject correlated values (40%). Not tied to a specific
+    # param name — works for any enum-driven param the schema exposes.
+    for pval in list(query_params.values()):
+        if isinstance(pval, str) and pval in DOMAIN_EDGE_CASES and random.random() < 0.4:
+            query_params.update(random.choice(DOMAIN_EDGE_CASES[pval]))
+            break
+
+    filled = path
+    for name, val in path_params.items():
+        filled = filled.replace("{" + name + "}", str(val))
+    return filled, query_params, json_body
+
+
+def discover(schema: dict):
+    """Return list of (path, method, spec) for every real operation in the schema."""
+    operations = []
+    for path, item in schema.get("paths", {}).items():
+        if path in SKIP_PATHS:
+            continue
+        for method, spec in item.items():
+            if method.lower() in ("get", "post", "put", "patch", "delete"):
+                operations.append((path, method.lower(), spec))
+    return operations
+
+
+def print_enum_params(operations, root):
+    """Surface enum-valued params (e.g. op) so loop-closure on new ops is visible."""
+    for path, method, spec in operations:
+        for p in spec.get("parameters", []):
+            ps = resolve_ref(p.get("schema", {}), root)
+            if isinstance(ps, dict) and "enum" in ps:
+                print(f"    {method.upper()} {path}  {p['name']} ∈ {ps['enum']}")
 
 
 def main() -> None:
     print(f"Simulator → {BASE_URL}")
     print(f"Fetching schema from {BASE_URL}/openapi.json ...")
-
     schema = fetch_schema(BASE_URL)
-    ops = extract_operations(schema)
-    print(f"Discovered operations: {ops}")
-    print(f"Firing {N_REQUESTS} requests (40% edge cases)\n")
 
-    counts: dict[str, dict] = {op: {"total": 0, "errors": 0} for op in ops}
+    operations = discover(schema)
+    if not operations:
+        raise RuntimeError("No operations found in /openapi.json — nothing to exercise.")
 
-    for i in range(N_REQUESTS):
-        op = random.choice(ops)
-        inputs = gen_inputs(op)
-        params = {"op": op, **inputs}
+    labels = [f"{m.upper()} {p}" for p, m, _ in operations]
+    print(f"Discovered {len(operations)} operations: {labels}")
+    print_enum_params(operations, schema)
+
+    # Coverage pass (hit each op once) + weighted remainder toward ops with inputs.
+    pool = [o for o in operations if has_inputs(o[2])] or operations
+    sequence = list(operations) + [random.choice(pool) for _ in range(max(0, N_REQUESTS - len(operations)))]
+    sequence = sequence[:N_REQUESTS]
+    random.shuffle(sequence)
+
+    print(f"Firing {len(sequence)} requests\n")
+    stats: dict[str, dict] = {}
+    for i, (path, method, spec) in enumerate(sequence):
+        label = f"{method.upper()} {path}"
+        stats.setdefault(label, {"total": 0, "errors": 0})
+        filled, qp, body = build_request(path, spec, schema)
         try:
-            r = httpx.get(
-                urljoin(BASE_URL, "/calculate"),
-                params=params,
-                headers={"X-Usage-Source": "simulator"},
-                timeout=5,
+            r = httpx.request(
+                method, urljoin(BASE_URL, filled),
+                params=qp or None, json=body,
+                headers={"X-Usage-Source": "simulator"}, timeout=5,
             )
             status = r.status_code
-            counts[op]["total"] += 1
+            stats[label]["total"] += 1
             if status >= 400:
-                counts[op]["errors"] += 1
+                stats[label]["errors"] += 1
             tag = "ERR" if status >= 400 else " OK"
-            print(f"[{i+1:02d}] {tag} {op:10s}  a={inputs['a']:>10}  b={inputs['b']:>10}  → {status}")
+            detail = f"q={qp}" if qp else (f"body={body}" if body else "")
+            print(f"[{i + 1:02d}] {tag} {label:22s} {detail} → {status}")
         except Exception as e:
-            counts[op]["total"] += 1
-            counts[op]["errors"] += 1
-            print(f"[{i+1:02d}] EXC {op:10s} → {e}")
+            stats[label]["total"] += 1
+            stats[label]["errors"] += 1
+            print(f"[{i + 1:02d}] EXC {label:22s} → {e}")
 
     print("\n── Summary ──────────────────────────────────")
-    for op, c in counts.items():
-        err_pct = (c["errors"] / c["total"] * 100) if c["total"] else 0
-        print(f"  {op:10s}: {c['total']:3d} calls, {c['errors']:3d} errors ({err_pct:.0f}%)")
-    print(f"\nUsage data appended to usage_log.jsonl on the server.")
+    for label, c in sorted(stats.items()):
+        pct = c["errors"] / c["total"] * 100 if c["total"] else 0
+        print(f"  {label:22s}: {c['total']:3d} calls, {c['errors']:3d} errors ({pct:.0f}%)")
+    print("\nUsage data appended to usage_log.jsonl on the server.")
     print("Run /dev-loop in Claude Code to analyze and propose features.")
 
 

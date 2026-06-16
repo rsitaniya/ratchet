@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-16
+
 ### Added
 - `abs` operation on `/calculate` computing `|a - b|` (absolute difference) — shipped via agentic dev-loop cycle 2 (suggested from 82 calls with negative a, 76 with negative b)
 

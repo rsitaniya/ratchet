@@ -83,7 +83,7 @@ Invoke the **implementer** subagent:
 
 ```
 Agent: implementer
-Input: "Implement: [chosen feature name and description]. Read app/main.py for context."
+Input: "Implement: [chosen feature name and description]. Read app/main.py for context. Return CODE, TEST_CODE, CHANGELOG, and EDGE_CASES."
 ```
 
 The subagent returns structured output with exact delimiters:
@@ -102,13 +102,19 @@ TEST_CODE:
 ```
 
 CHANGELOG: [one-line summary]
+
+EDGE_CASES: {"<op-or-feature>": [{"a": .., "b": ..}, ...]}
 ```
 
-**Orchestrator applies the writes:**
+**Orchestrator applies ALL the writes (the orchestrator is the sole writer):**
 
-1. Parse `FILE:`, `INSERTION_POINT:`, `CODE:` → use **Edit** to insert the code into `app/main.py` at the described location.
-2. Parse `TEST_FILE:` and `TEST_CODE:` → use **Write** to create the test file.
-3. Parse `CHANGELOG:` → use **Edit** to prepend the entry under `## [Unreleased]` in `CHANGELOG.md`.
+1. **Code** — Parse `FILE:`, `INSERTION_POINT:`, `CODE:` → use **Edit** to insert the code into `app/main.py` at the described location.
+2. **Test** — Parse `TEST_FILE:` and `TEST_CODE:` → use **Write** to create the test file.
+3. **Changelog (version-per-cycle)** — Determine the next minor version (read the current `version=` in `app/main.py`; bump the minor, e.g. 0.3.0 → 0.4.0). In `CHANGELOG.md`, insert a new `## [<new-version>] - <today>` section directly under `## [Unreleased]` and put the `CHANGELOG:` entry under its `### Added`. Leave `## [Unreleased]` empty.
+4. **Version bump** — Use **Edit** to update `version="<old>"` → `version="<new>"` in `app/main.py` so the running app's version always matches the latest CHANGELOG release.
+5. **Simulator edge cases** — Parse `EDGE_CASES:` (JSON) → use **Edit** to append the new entry into the `DOMAIN_EDGE_CASES` dict in `scripts/simulate.py`, so the next simulator run exercises the new feature intelligently (not just with random inputs).
+
+> The docs INSIDE the API (`/openapi.json`) are handled separately by the docs-updater in STEP 7. STEPs 3–5 above keep the *project* docs (CHANGELOG, version, simulator) in sync; STEP 7 keeps the *API* docs in sync. Both must happen every cycle.
 
 ---
 
@@ -172,9 +178,16 @@ The subagent returns either `NO_CHANGES_NEEDED` or one or more `FIND:/REPLACE:` 
 python scripts/simulate.py http://localhost:8000 5
 ```
 
-Confirm the new operation/endpoint appears in the simulator output under "Discovered operations".
-This proves the loop closure: the simulator re-reads `/openapi.json` and exercises the new feature
-without any manual editing.
+Confirm the new feature — **whatever its shape** — shows up in the simulator's discovery
+output and is then exercised. The simulator is generic: it discovers every path + method
+from `/openapi.json` and synthesizes requests from their schemas, so verification is not
+limited to enum `op` values. Depending on what was shipped, look for:
+- a new **endpoint or method** in the `Discovered N operations: [...]` list;
+- a new **enum value** on any param in the `<param> ∈ [...]` expansion lines;
+- a new **query/path param or request-body field** in the per-request log (`q={...}` / `body={...}`).
+
+If the feature appears and is hit at least once, loop closure holds: the simulator re-read
+`/openapi.json` and exercised the new feature with no manual editing of the simulator.
 
 ---
 

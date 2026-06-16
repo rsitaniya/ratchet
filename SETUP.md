@@ -202,7 +202,7 @@ concrete product gaps.
 | `.claude/agents/implementer.md` | Native Claude Code subagent | Read-only — returns structured text the orchestrator applies |
 | `.claude/agents/docs-updater.md` | Native Claude Code subagent | Read-only — returns FIND/REPLACE patches for metadata |
 | FastAPI `TestClient` | FastAPI built-in | In-process tests; no live server needed; idiomatic for FastAPI projects |
-| `scripts/simulate.py` | Plain Python + httpx | Generic schema-driven simulator; zero dependency on simulator knowing the API |
+| `scripts/simulate.py` | Plain Python + httpx | Generic multi-endpoint simulator; discovers every path+method from `/openapi.json` and synthesizes requests from their schemas |
 
 **Why native skills over a marketplace framework:**
 The `.claude/skills/<name>/SKILL.md` + `.claude/agents/<name>.md` convention
@@ -218,21 +218,36 @@ a loop this size.
 
 The only components that are calculator-specific:
 
-1. **`app/main.py`** — replace entirely with your API
-2. **`DOMAIN_EDGE_CASES` dict in `scripts/simulate.py`** — update edge cases for your domain (e.g., for a payments API: `{"amount": 0}`, `{"currency": "INVALID"}`, `{"amount": -1}`)
-3. **The `op` param extraction in `extract_operations()`** — update to match your API's enum or parameter name
+1. **`app/main.py`** — replace entirely with your API.
+2. **`DOMAIN_EDGE_CASES` dict in `scripts/simulate.py`** — an *optional* overlay of
+   correlated edge cases keyed by an enum value (here, the `op` query param: e.g.
+   `divide` → `{"a": 10, "b": 0}`). Replace with your domain's interesting inputs,
+   or delete it — the simulator still works from the schema alone.
+3. **The usage middleware's path filter in `app/main.py`** — it currently records
+   requests to `/calculate`. Point it at your endpoint(s) so their traffic becomes signal.
 
-Everything else is generic:
+Everything else is generic by construction:
 
-- The middleware pattern works for any FastAPI app — just change the path filter from `/calculate` to your endpoints
-- The feature-suggester prompt works for any `usage_log.jsonl` with the same schema
-- The implementer and docs-updater prompts are FastAPI-specific but broadly applicable to any Python/FastAPI service
-- The dev-loop orchestrator is fully generic — it reads whatever the subagents return
-- The simulator's schema-parsing logic works for any OpenAPI 3.x spec
+- **The simulator reads `/openapi.json` and exercises every path + method it finds**,
+  synthesizing query params, path params, and JSON request bodies directly from their
+  schemas (`$ref`, `enum`, arrays, and nested objects are all resolved). A brand-new
+  endpoint — a `GET`, or a `POST` with a body, or one with path params — is exercised
+  automatically on the next cycle with **no edits to the simulator**. (Verified against
+  a synthetic `POST /batch` + `GET /history/{id}` schema.)
+- The feature-suggester prompt works for any `usage_log.jsonl` with the same record shape
+- The implementer and docs-updater prompts are FastAPI-oriented but apply to any Python/FastAPI service
+- The dev-loop orchestrator is fully generic — it applies whatever structured text the subagents return
 
-**To target a non-FastAPI API:** replace the simulator with a script that fetches
-your API's documentation (Swagger, Postman collection, or a markdown spec) and
-generates requests from it. The rest of the loop is unchanged.
+**Honest caveat (signal vs. exercise):** the simulator *exercises* every endpoint, but
+the usage middleware currently records only `/calculate` traffic as product signal. A new
+endpoint is hit (proving the schema → request path and loop closure), but to turn its
+traffic into signal for the feature-suggester you widen the middleware's path filter — a
+one-line change. This keeps the calculator's signal clean today while documenting exactly
+how to extend it.
+
+**To target a non-OpenAPI API:** swap the schema source in `simulate.py` (e.g. fetch a
+Postman collection or a custom spec) and keep the same generate-from-schema logic. The
+rest of the loop is unchanged.
 
 ---
 
@@ -263,32 +278,22 @@ So the single command that satisfies the bonus is simply:
 
 ```
 quanted/
-├── CLAUDE.md                          # Project conventions + quick-start
-├── SETUP.md                           # This file
-├── CHANGELOG.md                       # Feature history (updated each cycle)
-├── requirements.txt                   # Python dependencies
-├── pyproject.toml                     # pytest config (pythonpath = ["."])
-├── .gitignore                         # Ignores caches, venvs, zips
-├── usage_log.jsonl                    # Append-only usage signal (auto-created)
-├── app/
-│   ├── __init__.py                    # Package marker
-│   └── main.py                        # FastAPI app: calculator + middleware
-├── scripts/
-│   ├── simulate.py                    # Schema-driven simulator
-│   └── analyze_usage.py               # Raw log → signal report (for feature-suggester)
-├── tests/
-│   ├── conftest.py                    # Shared client + usage_log isolation
-│   ├── test_calculator.py             # FastAPI TestClient tests (core ops)
-│   ├── test_modulo.py                 # Tests for the mod feature (cycle 1)
-│   └── test_validation.py             # nan/inf/overflow rejection tests
+├── CLAUDE.md            # Project conventions + quick-start
+├── SETUP.md             # This file
+├── CHANGELOG.md         # Feature history — a release section per shipped cycle
+├── requirements.txt     # Python dependencies
+├── pyproject.toml       # pytest config (pythonpath = ["."])
+├── .gitignore           # Ignores caches, venvs, zips, runtime usage_log.jsonl
+├── usage_log.jsonl      # Runtime usage signal (gitignored; auto-created on first run)
+├── app/                 # FastAPI app: calculator + usage middleware (main.py)
+├── scripts/             # simulate.py (schema-driven simulator) + analyze_usage.py (signal report)
+├── tests/               # FastAPI TestClient suites + conftest.py (shared client, usage_log isolation)
+│                        #   one test_<feature>.py is added per shipped cycle
 └── .claude/
-    ├── agents/
-    │   ├── feature-suggester.md       # Read-only: analyzes usage, proposes features
-    │   ├── implementer.md             # Read-only: returns code + test + changelog
-    │   └── docs-updater.md            # Read-only: returns OpenAPI metadata patches
-    └── skills/
-        ├── simulate/
-        │   └── SKILL.md               # /simulate — runs the simulator
-        └── dev-loop/
-            └── SKILL.md               # /dev-loop — full orchestrator cycle
+    ├── agents/          # Read-only subagents: feature-suggester, implementer, docs-updater
+    └── skills/          # /simulate and /dev-loop orchestrator
 ```
+
+> The `tests/`, `scripts/`, and `app/` contents grow as the loop ships features
+> (each cycle adds a `test_<feature>.py`), so this tree is described by directory
+> rather than enumerated file-by-file — it stays accurate as the loop runs.
