@@ -67,11 +67,12 @@ The loop will:
     ├─ [Bash] python scripts/simulate.py → usage_log.jsonl populated
     │
     ├─ [Agent] feature-suggester ──────────────────────────────────────────┐
-    │       reads: usage_log.jsonl                                          │
+    │       runs:    scripts/analyze_usage.py (signal report)               │
+    │       reads:   app/main.py (skips already-implemented features)       │
     │       returns: PROPOSALS block (2-3 options with signal + complexity) │
     │   ◄───────────────────────────────────────────────────────────────────┘
     │
-    ├─ [AskUserQuestion] ⏸ HUMAN PICKS ONE FEATURE
+    ├─ [AskUserQuestion] ⏸ HUMAN PICKS ONE FEATURE (or "Stop the loop")
     │
     ├─ [Agent] implementer ─────────────────────────────────────────────────┐
     │       reads: app/main.py (for style/context)                          │
@@ -88,7 +89,9 @@ The loop will:
     │   ◄───────────────────────────────────────────────────────────────────┘
     │
     ├─ [Edit] Orchestrator applies metadata patches
-    └─ [Bash] simulator re-run → confirms new endpoint in /openapi.json
+    ├─ [Bash] simulator re-run → confirms new endpoint in /openapi.json
+    │
+    └─ loops back to the top (continuous mode) ──► /dev-loop STEP 1
 ```
 
 **Key design: subagents are read-only planners.** They return structured text;
@@ -128,11 +131,31 @@ request to `/calculate` and appends a JSON record to `usage_log.jsonl`:
   "inputs": {"a": "10", "b": "0"},
   "status_code": 400,
   "latency_ms": 1.23,
-  "error_type": "DivisionByZero"
+  "error_type": "DivisionByZero",
+  "source": "simulator"
 }
 ```
 
 The file is append-only. Historical entries accumulate across cycles.
+
+### The `source` field — keeping signal honest
+
+Each record carries a `source` (`simulator` | `unknown`), taken from the
+`X-Usage-Source` request header. The simulator sets it; ad-hoc/real callers
+default to `unknown`. This lets `analyze_usage.py --source simulator` separate
+generated traffic from organic traffic.
+
+**Test traffic never reaches this file.** `tests/conftest.py` redirects
+`USAGE_LOG` to a temp path for the whole test session, so running `pytest`
+cannot pollute the product signal that the feature-suggester reads.
+
+### `analyze_usage.py` — raw log → actionable signal
+
+The feature-suggester does not read raw JSONL. It runs `scripts/analyze_usage.py`,
+which produces a per-operation table (call volume, error rate, error-type
+breakdown), flags likely-unsupported operations (100% HTTP 422), and surfaces
+input-distribution signals (b=0 rate, negatives). This mirrors how a PM reads
+an event stream: rates and failed-intent signals, not individual log lines.
 
 ### Why middleware, not application-level logging
 
@@ -150,7 +173,7 @@ One JSON object per line means:
 - Zero setup — no DB, no schema migration
 - `wc -l usage_log.jsonl` gives total call count instantly
 - `grep '"operation":"divide"' usage_log.jsonl | wc -l` gives per-op count
-- The feature-suggester reads it with two lines of Python
+- `analyze_usage.py` parses it into a signal report with no DB or query engine
 - Append-only = safe for concurrent single-worker writes
 
 ### Why this is product signal, not just a log
@@ -217,26 +240,21 @@ generates requests from it. The rest of the loop is unchanged.
 
 **Status: Implemented.**
 
-The `/dev-loop` skill ends by asking "Run another cycle?" — if yes, it loops
-back to Step 1 automatically. The `AskUserQuestion` approval gate (Step 3 of
-each cycle) is the only blocking step.
+`/dev-loop` is itself the continuous loop. After shipping a feature (STEP 9), it
+returns straight to STEP 1 and starts the next cycle without asking — no `/loop`
+wrapper, no shell `while` loop needed. It runs indefinitely, cycle after cycle.
 
-For a fully hands-off loop (Ctrl+C to stop), use the built-in `/loop` skill:
+The `AskUserQuestion` approval gate (STEP 3) is the **only** blocking step. Every
+other step — simulate, suggest, implement, test, restart, docs, verify — chains
+automatically. To exit the loop:
 
-```bash
-# In Claude Code:
-/loop /dev-loop
+- Choose **"Stop the loop"** at the STEP 3 approval gate (graceful), or
+- Press **Ctrl+C** at any time.
+
+So the single command that satisfies the bonus is simply:
+
 ```
-
-This runs `/dev-loop` repeatedly. Each iteration stops only at the feature-approval
-gate. Press Ctrl+C at any time to exit.
-
-Alternatively, from the shell:
-
-```bash
-while true; do
-    claude --print "/dev-loop"
-done
+/dev-loop
 ```
 
 ---
@@ -249,13 +267,20 @@ quanted/
 ├── SETUP.md                           # This file
 ├── CHANGELOG.md                       # Feature history (updated each cycle)
 ├── requirements.txt                   # Python dependencies
+├── pyproject.toml                     # pytest config (pythonpath = ["."])
+├── .gitignore                         # Ignores caches, venvs, zips
 ├── usage_log.jsonl                    # Append-only usage signal (auto-created)
 ├── app/
+│   ├── __init__.py                    # Package marker
 │   └── main.py                        # FastAPI app: calculator + middleware
 ├── scripts/
-│   └── simulate.py                    # Schema-driven simulator
+│   ├── simulate.py                    # Schema-driven simulator
+│   └── analyze_usage.py               # Raw log → signal report (for feature-suggester)
 ├── tests/
-│   └── test_calculator.py             # FastAPI TestClient tests
+│   ├── conftest.py                    # Shared client + usage_log isolation
+│   ├── test_calculator.py             # FastAPI TestClient tests (core ops)
+│   ├── test_modulo.py                 # Tests for the mod feature (cycle 1)
+│   └── test_validation.py             # nan/inf/overflow rejection tests
 └── .claude/
     ├── agents/
     │   ├── feature-suggester.md       # Read-only: analyzes usage, proposes features

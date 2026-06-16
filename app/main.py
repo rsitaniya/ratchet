@@ -1,4 +1,5 @@
 import json
+import math
 import time
 from datetime import datetime, timezone
 from enum import Enum
@@ -38,7 +39,7 @@ gaps — e.g. "divide returned DivisionByZero in 27% of calls → add safe-divid
 Invoke `/dev-loop` in Claude Code to run a full feature-shipping cycle:
 simulate → suggest → human approves → implement → test → docs → repeat.
 """,
-    version="0.1.0",
+    version="0.2.0",
     docs_url="/docs",
     redoc_url="/redoc",
 )
@@ -79,6 +80,7 @@ async def usage_logger(request: Request, call_next):
             "status_code": response.status_code,
             "latency_ms": latency_ms,
             "error_type": getattr(request.state, "error_type", None),
+            "source": request.headers.get("x-usage-source", "unknown"),
         }
         with USAGE_LOG.open("a") as f:
             f.write(json.dumps(record) + "\n")
@@ -89,7 +91,10 @@ async def usage_logger(request: Request, call_next):
 @app.get(
     "/calculate",
     response_model=CalculateResponse,
-    responses={400: {"model": ErrorResponse, "description": "Invalid operation (e.g. division by zero)"}},
+    responses={
+        400: {"model": ErrorResponse, "description": "DivisionByZero (b=0) or numeric Overflow (result not finite)"},
+        422: {"model": ErrorResponse, "description": "NonFiniteInput — operand is nan, inf, or -inf"},
+    },
     summary="Perform arithmetic",
     description="""
 Compute `op(a, b)` and return the result.
@@ -103,6 +108,9 @@ Compute `op(a, b)` and return the result.
 
 ### Inputs
 Operands support negative numbers, floats, and very large values.
+Non-finite operands (`nan`, `inf`, `-inf`) are rejected with **HTTP 422**
+(`error_type: NonFiniteInput`). Computations that overflow to a non-finite
+result return **HTTP 400** (`error_type: Overflow`).
 
 ### Usage logging
 Every call is recorded to `usage_log.jsonl`. The agentic feature-suggester reads
@@ -115,6 +123,14 @@ async def calculate(
     a: float = Query(..., description="First operand — supports negatives, floats, large numbers"),
     b: float = Query(..., description="Second operand — b=0 triggers DivisionByZero error for divide and mod"),
 ) -> CalculateResponse:
+    for name, value in (("a", a), ("b", b)):
+        if not math.isfinite(value):
+            request.state.error_type = "NonFiniteInput"
+            return JSONResponse(
+                status_code=422,
+                content={"error": f"Operand {name} must be a finite number", "error_type": "NonFiniteInput"},
+            )
+
     if op in (Operation.divide, Operation.mod) and b == 0:
         request.state.error_type = "DivisionByZero"
         return JSONResponse(
@@ -129,7 +145,14 @@ async def calculate(
         Operation.divide: lambda: a / b,
         Operation.mod: lambda: a % b,
     }
-    return CalculateResponse(result=ops[op](), op=op.value, a=a, b=b)
+    result = ops[op]()
+    if not math.isfinite(result):
+        request.state.error_type = "Overflow"
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Result is not a finite number (overflow)", "error_type": "Overflow"},
+        )
+    return CalculateResponse(result=result, op=op.value, a=a, b=b)
 
 
 @app.get("/health", summary="Health check", description="Returns `{status: ok}` if the service is running.")

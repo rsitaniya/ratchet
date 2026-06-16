@@ -101,8 +101,12 @@ def extract_operations(schema: dict) -> list[str]:
                 if "enum" in param_schema:
                     return param_schema["enum"]
 
-    # Fallback: no schema introspection available
-    return ["add", "subtract", "multiply", "divide"]
+    # Could not introspect the schema — fail loudly rather than silently
+    # exercising a hardcoded op list that may not match the live API.
+    raise RuntimeError(
+        "Could not find an 'op' enum in /openapi.json. The simulator is "
+        "schema-driven and refuses to fall back to a hardcoded operation list."
+    )
 
 
 def gen_inputs(op: str) -> dict:
@@ -132,7 +136,12 @@ def main() -> None:
         inputs = gen_inputs(op)
         params = {"op": op, **inputs}
         try:
-            r = httpx.get(urljoin(BASE_URL, "/calculate"), params=params, timeout=5)
+            r = httpx.get(
+                urljoin(BASE_URL, "/calculate"),
+                params=params,
+                headers={"X-Usage-Source": "simulator"},
+                timeout=5,
+            )
             status = r.status_code
             counts[op]["total"] += 1
             if status >= 400:

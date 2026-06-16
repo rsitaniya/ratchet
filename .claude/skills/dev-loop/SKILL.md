@@ -46,7 +46,7 @@ Invoke the **feature-suggester** subagent:
 
 ```
 Agent: feature-suggester
-Input: "Read usage_log.jsonl and propose 2-3 features. File path: usage_log.jsonl"
+Input: "Run scripts/analyze_usage.py on usage_log.jsonl, read app/main.py for currently-supported operations, and propose 2-3 features that are NOT already implemented."
 ```
 
 The subagent returns a PROPOSALS block with 2-3 options, each with:
@@ -70,9 +70,10 @@ Do NOT proceed until the user selects a feature.
 Format the question as:
 - Question: "Which feature should we implement this cycle?"
 - Options: one per proposal (label = feature name, description = signal + one-liner)
-- Include an "Other / skip this cycle" option
+- Include a "Stop the loop" option to exit continuous mode gracefully
 
-After the user picks, confirm the selection and proceed.
+If the user selects "Stop the loop", end the skill cleanly. Otherwise confirm
+the selection and proceed.
 
 ---
 
@@ -177,21 +178,30 @@ without any manual editing.
 
 ---
 
-## STEP 9 — Report & optionally repeat
+## STEP 9 — Report & loop (BONUS: continuous mode)
 
 Report to the user:
+- Cycle number (track a counter starting at 1; increment each loop)
 - What feature was implemented
 - Test results (pass/fail count)
 - CHANGELOG entry added
 - Whether the new operation appears in the simulator
 
-Ask: "Run another cycle?" If yes, go back to STEP 1.
+Then **immediately return to STEP 1 to begin the next cycle — do NOT ask permission to continue.**
+The loop runs indefinitely. The human-approval gate in STEP 3 is the natural pause in
+every cycle: the user can pick a feature, or pick the "Stop the loop" option to exit
+gracefully. Pressing Ctrl+C also exits at any time.
+
+This makes `/dev-loop` a single command that runs the agentic loop continuously, with
+human approval as the ONLY blocking step — satisfying the bonus requirement.
 
 ---
 
 ## IMPORTANT NOTES
 
 - **Subagents are read-only.** They return structured text only. This orchestrator applies every write.
-- **Human approval (STEP 3) is the ONLY blocking step.** All other steps chain automatically.
+- **Human approval (STEP 3) is the ONLY blocking step.** All other steps chain automatically, cycle after cycle.
+- **The loop is continuous.** After STEP 9, go straight back to STEP 1. The only ways to stop are
+  choosing "Stop the loop" at the STEP 3 approval gate, or Ctrl+C.
 - **Do not skip the test step.** A feature is not shipped until `pytest tests/ -v` passes.
 - **Do not truncate usage_log.jsonl** — historical entries are the signal for future cycles.

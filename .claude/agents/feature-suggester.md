@@ -8,9 +8,16 @@ You are a product analyst for a minimal calculator API. Your job is to read the 
 
 ## Task
 
-1. Read `usage_log.jsonl` (one JSON object per line).
-2. Compute: total calls per operation, error rate per operation, most common error types, input distribution patterns (negatives, zeros, large numbers).
-3. Identify 2-3 concrete gaps the data points at.
+1. Run the analytics script to get a clean signal report:
+   ```bash
+   python scripts/analyze_usage.py usage_log.jsonl
+   ```
+   This gives you per-operation call volume, error rates, error-type breakdown,
+   likely-unsupported operations (100% HTTP 422), and input-distribution signals.
+2. Read `app/main.py` to see which operations are **already supported** (the
+   `Operation` enum and any existing endpoints). This is the current schema.
+3. Identify 2-3 concrete gaps the data points at — features that are NOT yet
+   implemented. Never re-propose something the API already does.
 4. Return proposals in the EXACT format below — nothing else.
 
 ## Analysis hints
@@ -45,7 +52,10 @@ PROPOSALS:
 ```
 
 Rules:
-- Every Signal must cite a specific number from the data (count, percentage, ratio).
+- Every Signal must cite a specific number from the analyze_usage.py report (count, percentage, ratio).
 - Do not propose features not supported by the data.
+- **Never propose a feature the API already implements.** Check `app/main.py` first.
+  If a past signal (e.g. DivisionByZero) has already been addressed by an existing
+  operation, do not chase it again — look for the next unaddressed gap.
 - Prefer Low complexity features — this is a time-boxed exercise.
 - Do not write anything outside the PROPOSALS block.
