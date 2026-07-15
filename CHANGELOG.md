@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-06-16
+
+### Added
+- Added safe_divide operation to /calculate and /calculate/batch endpoints that returns null result instead of HTTP 400 when b=0, enabling graceful null-handling in client code.
+
+## [0.4.0] - 2026-06-16
+
+### Added
+- Added POST /calculate/batch endpoint that accepts a JSON array of {op, a, b} objects and returns per-item results in a single round-trip, isolating per-item errors (DivisionByZero, Overflow, NonFiniteInput) without aborting the batch.
+
 ### Changed
 - Usage collection is now **endpoint-generic**: the middleware records every product endpoint (everything outside `SKIP_USAGE_PATHS`), not just `/calculate`. Records gain `path` and `method` fields and `inputs` now captures all query params. This closes the feedback loop for any feature shape — new endpoints' traffic becomes signal automatically.
 - `analyze_usage.py` keys its breakdown by `op` for `/calculate` and by `path` for other endpoints, and adds a **Requested-but-missing endpoints (HTTP 404)** section so unmet demand surfaces as a build signal.

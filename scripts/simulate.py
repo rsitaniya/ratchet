@@ -72,6 +72,19 @@ DOMAIN_EDGE_CASES: dict[str, list[dict]] = {
         {"a": 1e308, "b": -1e308},  # subtraction overflows → Overflow guard
         {"a": -3, "b": -3},         # double negative, result 0
     ],
+    "safe_divide": [
+        {"a": 10, "b": 2},          # normal division
+        {"a": 7, "b": 0},           # b=0 → returns null result instead of HTTP 400
+        {"a": -10, "b": -2},        # negative ÷ negative
+        {"a": 0, "b": 0},           # 0 ÷ 0 → null result
+        {"a": 1e100, "b": 1e-100},  # large ratio
+    ],
+    "batch": [
+        {"op": "divide", "a": 1, "b": 0},
+        {"op": "multiply", "a": 1e308, "b": 1e308},
+        {"op": "mod", "a": -7, "b": 3},
+        {"op": "abs", "a": -5, "b": -10},
+    ],
 }
 
 
