@@ -60,9 +60,15 @@ new endpoint is exercised on the very next cycle.
 
 ## Demo
 
-> One full `/dev-loop` cycle: telemetry → proposal → approval → diff → tests → live endpoint.
+The two ideas that make the loop turn, in 40 seconds — **a 404 becomes a feature
+request**, and **the simulator exercises an endpoint that didn't exist when it started**:
 
-![One dev-loop cycle shipping a feature](docs/demo.gif)
+![Nine 404s on /sqrt surface as signal; the endpoint ships via git apply; the unedited simulator discovers and exercises it](docs/demo.gif)
+
+Every command is real. The agent turns are narrated rather than played out — a live
+`/dev-loop` cycle spends most of its time waiting on model calls and on you, which
+makes for a bad GIF. Run `/dev-loop` yourself to see those steps; the diff applied
+here is exactly the shape the `implementer` returns.
 
 ## Quickstart
 
