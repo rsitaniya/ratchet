@@ -33,7 +33,7 @@ CHANGELOG: [one-line summary, e.g. "Added modulo operation (op=mod) to /calculat
 
 EDGE_CASES: [JSON object mapping the new op/endpoint name to a list of 2-4 {"a": <num>, "b": <num>} dicts that exercise its interesting cases — sign boundaries, zero, overflow, equal operands, error triggers. Example for a hypothetical "power" op:
 {"power": [{"a": 2, "b": 10}, {"a": 0, "b": 0}, {"a": -2, "b": 3}, {"a": 1e200, "b": 2}]}
-The orchestrator appends this to DOMAIN_EDGE_CASES in scripts/simulate.py so the simulator exercises the new feature intelligently, not just with random inputs.]
+The orchestrator merges this into the edge-cases file named by [simulator].edge_cases in flywheel.toml (default edge_cases.json) so the simulator exercises the new feature intelligently, not just with random inputs.]
 ````
 
 ## Rules

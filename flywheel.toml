@@ -1,0 +1,34 @@
+# dev-flywheel configuration.
+#
+# This file is the seam between the generic loop and one specific API.
+# To run the flywheel against your own FastAPI app, edit this file and
+# edge_cases.json — nothing under scripts/ or .claude/ should need changing.
+# See docs/ADAPTING.md.
+#
+# Every key has a working default, so the loop still runs if this file is absent.
+
+[app]
+# Import path handed to uvicorn, and where the simulator points.
+module = "app.main:app"
+base_url = "http://localhost:8000"
+
+# Files the dev-loop orchestrator bumps the version in each cycle. The app's
+# own version is included so /openapi.json always reports the shipped version.
+version_files = ["app/main.py", "pyproject.toml", "CHANGELOG.md"]
+
+[simulator]
+# Correlated domain edge cases overlaid onto schema-generated requests.
+# Optional: delete the file or blank this out and the simulator still exercises
+# every endpoint using values synthesized from /openapi.json alone.
+edge_cases = "edge_cases.json"
+default_requests = 30
+
+[signals]
+# Request params to profile in the usage report, for APIs where the *distribution*
+# of inputs is itself a product signal. Leave both empty for a generic app.
+#
+# The bundled calculator profiles its two operands: a spike in `b=0` is what
+# surfaced demand for safe_divide, and a spike in negative `a` is what surfaced
+# demand for abs.
+numeric_params = ["a", "b"]
+zero_value_params = ["b"]

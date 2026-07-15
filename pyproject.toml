@@ -1,2 +1,54 @@
+[project]
+name = "dev-flywheel"
+version = "0.5.0"
+description = "A FastAPI service that ships its own features from its own usage data — a closed, agentic development loop."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "Rohan Sitaniya" }]
+keywords = ["agentic-ai", "llm", "claude-code", "fastapi", "developer-tools", "ai-agents"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Code Generators",
+]
+dependencies = [
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.29.0",
+    "httpx>=0.27.0",
+    "watchfiles>=0.21.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.6.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/rsitaniya/dev-flywheel"
+Repository = "https://github.com/rsitaniya/dev-flywheel"
+Changelog = "https://github.com/rsitaniya/dev-flywheel/blob/main/CHANGELOG.md"
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W"]
+ignore = [
+    # FastAPI's core idiom is calling Query()/Depends() in argument defaults.
+    "B008",
+    # `class Operation(str, Enum)` is deliberate: it keeps JSON-schema enum
+    # serialization identical across the FastAPI versions this supports.
+    "UP042",
+]

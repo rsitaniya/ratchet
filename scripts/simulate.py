@@ -9,83 +9,37 @@ POST, with query params, path params, or a JSON body), the simulator exercises
 it automatically with no hand-editing, as long as it is described in
 /openapi.json.
 
-The only domain-specific knowledge is the DOMAIN_EDGE_CASES overlay below, which
-injects *correlated* edge cases for an enum-driven `op` query param (e.g.
-op=divide with b=0). All request *structure* — which endpoints exist, their
-methods, params, and body shapes — is derived from the schema at runtime.
+It carries no domain knowledge of its own. Correlated edge cases (e.g. op=divide
+with b=0) are loaded from the file named by `simulator.edge_cases` in
+flywheel.toml; if that overlay is absent the simulator still exercises every
+endpoint using values synthesized from the schema alone. All request *structure*
+— which endpoints exist, their methods, params, and body shapes — is derived from
+the schema at runtime.
 
 Usage:
     python scripts/simulate.py [BASE_URL] [N_REQUESTS]
 
-Defaults: BASE_URL=http://localhost:8000, N_REQUESTS=30
+Defaults come from flywheel.toml ([app].base_url, [simulator].default_requests).
 """
-import json
 import random
 import sys
 from urllib.parse import urljoin
 
 import httpx
+from flywheel_config import load_config, load_edge_cases
 
-BASE_URL = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8000"
-N_REQUESTS = int(sys.argv[2]) if len(sys.argv) > 2 else 30
+CONFIG = load_config()
+
+BASE_URL = sys.argv[1] if len(sys.argv) > 1 else CONFIG["app"]["base_url"]
+N_REQUESTS = int(sys.argv[2]) if len(sys.argv) > 2 else CONFIG["simulator"]["default_requests"]
 
 # Endpoints that *describe* the API rather than being part of it — skip them.
 SKIP_PATHS = {"/openapi.json", "/docs", "/redoc", "/docs/oauth2-redirect"}
 
-# Correlated edge cases for an enum-driven `op` query param, keyed by op value.
-# Injected when a generated request carries that op. This is the ONLY
-# calculator-specific knowledge in the simulator; request structure is generic.
-DOMAIN_EDGE_CASES: dict[str, list[dict]] = {
-    "divide": [
-        {"a": 10, "b": 0},          # DivisionByZero — creates error signal
-        {"a": -5, "b": 2},          # negative numerator
-        {"a": 1, "b": 3},           # repeating decimal
-        {"a": 1e9, "b": 3},         # large number
-        {"a": 0.001, "b": 0.001},   # tiny floats
-        {"a": 0, "b": 5},           # zero numerator
-    ],
-    "multiply": [
-        {"a": 0, "b": 999},
-        {"a": -3, "b": -4},         # negative × negative
-        {"a": 1e6, "b": 1e6},       # large product
-        {"a": 0.1, "b": 0.2},       # float precision
-    ],
-    "add": [
-        {"a": 1e15, "b": 1e15},
-        {"a": -1000, "b": 1000},    # cancellation
-        {"a": 0, "b": 0},
-    ],
-    "subtract": [
-        {"a": 0, "b": 1000},        # negative result
-        {"a": -5, "b": -3},         # double negative
-        {"a": 1.0, "b": 0.9},       # float subtraction
-    ],
-    "mod": [
-        {"a": 10, "b": 0},          # DivisionByZero — creates error signal
-        {"a": -7, "b": 3},          # negative dividend (Python: result is 2)
-        {"a": 7, "b": -3},          # negative divisor (Python: result is -2)
-        {"a": 10, "b": 10},         # result = 0 edge case
-    ],
-    "abs": [
-        {"a": 5, "b": 5},           # |a-b| = 0 (equal operands)
-        {"a": -10, "b": 10},        # large magnitude difference
-        {"a": 1e308, "b": -1e308},  # subtraction overflows → Overflow guard
-        {"a": -3, "b": -3},         # double negative, result 0
-    ],
-    "safe_divide": [
-        {"a": 10, "b": 2},          # normal division
-        {"a": 7, "b": 0},           # b=0 → returns null result instead of HTTP 400
-        {"a": -10, "b": -2},        # negative ÷ negative
-        {"a": 0, "b": 0},           # 0 ÷ 0 → null result
-        {"a": 1e100, "b": 1e-100},  # large ratio
-    ],
-    "batch": [
-        {"op": "divide", "a": 1, "b": 0},
-        {"op": "multiply", "a": 1e308, "b": 1e308},
-        {"op": "mod", "a": -7, "b": 3},
-        {"op": "abs", "a": -5, "b": -10},
-    ],
-}
+# Correlated edge cases, keyed by the value of an enum-driven param (e.g. `op`).
+# Loaded from the file named by [simulator].edge_cases in flywheel.toml, so the
+# simulator itself stays free of domain knowledge. Empty overlay is supported.
+DOMAIN_EDGE_CASES: dict[str, list[dict]] = load_edge_cases(CONFIG)
 
 
 def fetch_schema(base_url: str) -> dict:

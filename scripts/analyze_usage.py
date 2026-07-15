@@ -5,10 +5,13 @@ Usage analytics — turns usage_log.jsonl into actionable product signal.
 Reads the append-only usage log and prints a per-endpoint/operation breakdown:
 call volume, error rate, error-type distribution, likely-unsupported operations
 (100% HTTP 422), requested-but-missing endpoints (HTTP 404 — "build this"), and
-input-distribution signals. Rows are keyed by `operation` for /calculate traffic
-and by `path` for every other endpoint, so a brand-new endpoint's traffic becomes
-signal automatically. This is the report the feature-suggester reads to ground
-its proposals.
+input-distribution signals. Rows are keyed by `operation` where present and by
+`path` otherwise, so a brand-new endpoint's traffic becomes signal automatically.
+This is the report the feature-suggester reads to ground its proposals.
+
+Which request params get profiled under "Input signals" comes from [signals] in
+flywheel.toml, so this report carries no domain knowledge of its own. Configure
+nothing and every section except that one still works.
 
 Usage:
     python scripts/analyze_usage.py [LOG_PATH] [--last N] [--source SOURCE]
@@ -18,6 +21,12 @@ Defaults: LOG_PATH=usage_log.jsonl, analyzes all entries from all sources.
 import argparse
 import json
 from collections import Counter, defaultdict
+
+from flywheel_config import load_config
+
+CONFIG = load_config()
+NUMERIC_PARAMS: list[str] = CONFIG["signals"]["numeric_params"]
+ZERO_VALUE_PARAMS: list[str] = CONFIG["signals"]["zero_value_params"]
 
 
 def load(path: str, last: int | None, source: str | None) -> list[dict]:
@@ -66,10 +75,11 @@ def main() -> None:
     )
     sources: Counter = Counter()
     missing: Counter = Counter()  # paths requested but not implemented (HTTP 404)
-    b_zero = neg_a = neg_b = 0
+    zero_counts: Counter = Counter()  # configured param -> times it was 0
+    neg_counts: Counter = Counter()  # configured param -> times it was negative
 
     for e in rows:
-        # Key by op for /calculate traffic, by path for every other endpoint.
+        # Key by op where the endpoint reports one, by path otherwise.
         # New endpoints (and old op-only records) both slot in cleanly.
         op = e.get("operation") or e.get("path") or "<none>"
         s = per_op[op]
@@ -85,13 +95,13 @@ def main() -> None:
             s["latency"].append(lat)
         sources[e.get("source") or "unknown"] += 1
         inp = e.get("inputs", {}) or {}
-        a, b = _to_float(inp.get("a")), _to_float(inp.get("b"))
-        if b == 0:
-            b_zero += 1
-        if a is not None and a < 0:
-            neg_a += 1
-        if b is not None and b < 0:
-            neg_b += 1
+        for name in NUMERIC_PARAMS:
+            val = _to_float(inp.get(name))
+            if val is not None and val < 0:
+                neg_counts[name] += 1
+        for name in ZERO_VALUE_PARAMS:
+            if _to_float(inp.get(name)) == 0:
+                zero_counts[name] += 1
 
     window = f"last {args.last}" if args.last else "all entries"
     src_filter = f"  |  Source filter: {args.source}" if args.source else ""
@@ -138,10 +148,14 @@ def main() -> None:
     print()
 
     print("── Input signals ───────────────────────────────────────")
-    print(f"  b=0 inputs:    {b_zero} ({b_zero / total * 100:.1f}% of total)")
-    print(f"  negative a:    {neg_a}")
-    print(f"  negative b:    {neg_b}")
-    print(f"  sources:       {dict(sources)}")
+    if not NUMERIC_PARAMS and not ZERO_VALUE_PARAMS:
+        print("  (no params configured — set [signals] in flywheel.toml to profile inputs)")
+    for name in ZERO_VALUE_PARAMS:
+        n = zero_counts[name]
+        print(f"  {f'{name}=0 inputs:':<15}{n:>5} ({n / total * 100:.1f}% of total)")
+    for name in NUMERIC_PARAMS:
+        print(f"  {f'negative {name}:':<15}{neg_counts[name]:>5}")
+    print(f"  {'sources:':<15}{dict(sources)}")
 
 
 if __name__ == "__main__":

@@ -106,9 +106,9 @@ EDGE_CASES: {"<op-or-feature>": [{"a": .., "b": ..}, ...]}
 
 1. **Code + test patch** — Extract the `PATCH:` diff into a temp file, then run `git apply --check <tempfile>`. If it passes, run `git apply <tempfile>`. If it fails, inspect the failure and either repair the diff directly or ask the implementer for a corrected unified diff.
 2. **Test path sanity** — Confirm `TEST_FILE:` exists after the patch and is under `tests/`.
-3. **Changelog (version-per-cycle)** — Determine the next minor version (read the current `version=` in `app/main.py`; bump the minor, e.g. 0.3.0 → 0.4.0). In `CHANGELOG.md`, insert a new `## [<new-version>] - <today>` section directly under `## [Unreleased]` and put the `CHANGELOG:` entry under its `### Added`. Leave `## [Unreleased]` empty.
-4. **Version bump** — Use **Edit** to update `version="<old>"` → `version="<new>"` in `app/main.py` so the running app's version always matches the latest CHANGELOG release.
-5. **Simulator edge cases** — Parse `EDGE_CASES:` (JSON) → use **Edit** to append the new entry into the `DOMAIN_EDGE_CASES` dict in `scripts/simulate.py`, so the next simulator run exercises the new feature intelligently (not just with random inputs).
+3. **Changelog (version-per-cycle)** — Determine the next minor version (read the current `version=` in the app module named by `[app].module` in `flywheel.toml`; bump the minor, e.g. 0.3.0 → 0.4.0). In `CHANGELOG.md`, insert a new `## [<new-version>] - <today>` section directly under `## [Unreleased]` and put the `CHANGELOG:` entry under its `### Added`. Leave `## [Unreleased]` empty.
+4. **Version bump** — Use **Edit** to update the version string in every file listed in `[app].version_files` in `flywheel.toml` (by default: `app/main.py`, `pyproject.toml`, `CHANGELOG.md`) so the running app's version always matches the latest CHANGELOG release.
+5. **Simulator edge cases** — Parse `EDGE_CASES:` (JSON) → use **Edit** to merge the new entry into the JSON file named by `[simulator].edge_cases` in `flywheel.toml` (by default `edge_cases.json`), so the next simulator run exercises the new feature intelligently (not just with random inputs). Keys starting with `_` are documentation and are ignored by the loader.
 
 > The docs INSIDE the API (`/openapi.json`) are handled separately by the docs-updater in STEP 7. STEPs 3–5 above keep the *project* docs (CHANGELOG, version, simulator) in sync; STEP 7 keeps the *API* docs in sync. Both must happen every cycle.
 
