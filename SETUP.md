@@ -244,17 +244,25 @@ external framework (LangGraph, CrewAI, etc.) inside a 150-minute time box.
 
 ## How to adapt this setup to a different API
 
-The only components that are calculator-specific:
+> **See [docs/ADAPTING.md](docs/ADAPTING.md) for the step-by-step guide.** What follows is
+> the design rationale for *why* so little of this is domain-specific.
 
-1. **`app/main.py`** — replace entirely with your API.
-2. **`DOMAIN_EDGE_CASES` dict in `scripts/simulate.py`** — an *optional* overlay of
-   correlated edge cases keyed by an enum value (here, the `op` query param: e.g.
-   `divide` → `{"a": 10, "b": 0}`). Replace with your domain's interesting inputs,
-   or delete it — the simulator still works from the schema alone.
-3. **`SKIP_USAGE_PATHS` in `app/main.py`** — the usage middleware records *every*
-   endpoint except this infra skip-list (`/health`, `/docs`, `/openapi.json`, …).
-   For a different API, just adjust which paths count as infra noise; all product
-   endpoints are captured automatically with no per-endpoint wiring.
+Nothing under `scripts/` or `.claude/` carries domain knowledge. The calculator-specific
+surface is two root config files plus the app itself:
+
+1. **`app/main.py`** — replace entirely with your API. Keep the usage middleware
+   (~20 lines) and adjust **`SKIP_USAGE_PATHS`**, its infra skip-list (`/health`,
+   `/docs`, `/openapi.json`, …). Every other endpoint is captured automatically with
+   no per-endpoint wiring.
+2. **`flywheel.toml`** — declares the app module, the files whose version the
+   orchestrator bumps each cycle, and (under `[signals]`) which request params are
+   worth profiling in the usage report.
+3. **`edge_cases.json`** — an *optional* overlay of correlated edge cases keyed by an
+   enum value (here, the `op` query param: e.g. `divide` → `{"a": 10, "b": 0}`).
+   Replace with your domain's interesting inputs, or delete the file — the simulator
+   still works from the schema alone. The dev-loop appends to it as it ships features.
+
+Both config files fall back to working defaults, so the loop runs with neither present.
 
 Everything else is generic by construction:
 
@@ -304,22 +312,30 @@ cycle. To exit the loop:
 ## File structure
 
 ```
-quanted/
+dev-flywheel/
+├── README.md            # Landing page: thesis, loop diagram, demo, receipts
 ├── CLAUDE.md            # Project conventions + quick-start
-├── SETUP.md             # This file
+├── SETUP.md             # This file — mechanism and design rationale
 ├── CHANGELOG.md         # Feature history — a release section per shipped cycle
-├── requirements.txt     # Python dependencies
-├── pyproject.toml       # pytest config (pythonpath = ["."])
+├── flywheel.toml        # ★ The seam: app module, version files, signal params
+├── edge_cases.json      # ★ Optional correlated edge cases (grown by the loop)
+├── LICENSE / NOTICE     # Apache-2.0
+├── requirements.txt     # Python dependencies (quickstart)
+├── pyproject.toml       # Package metadata, ruff + pytest config
 ├── .gitignore           # Ignores caches, venvs, zips, runtime usage_log.jsonl
 ├── usage_log.jsonl      # Runtime usage signal (gitignored; auto-created on first run)
-├── app/                 # FastAPI app: calculator + usage middleware (main.py)
-├── scripts/             # simulate.py (schema-driven simulator) + analyze_usage.py (signal report)
+├── app/                 # Example FastAPI app: calculator + usage middleware (main.py)
+├── scripts/             # simulate.py + analyze_usage.py + flywheel_config.py (config loader)
 ├── tests/               # FastAPI TestClient suites + conftest.py (shared client, usage_log isolation)
 │                        #   one test_<feature>.py is added per shipped cycle
+├── docs/                # ADAPTING.md (use your own API), demo.gif, blog/
+├── .github/workflows/   # CI: lint + tests (3.11–3.13) + a loop-closure job
 └── .claude/
     ├── agents/          # Read-only subagents: feature-suggester, implementer, docs-updater
     └── skills/          # /simulate and /dev-loop orchestrator
 ```
+
+★ = the only files carrying domain knowledge. Everything else is generic.
 
 > The `tests/`, `scripts/`, and `app/` contents grow as the loop ships features
 > (each cycle adds a `test_<feature>.py`), so this tree is described by directory
