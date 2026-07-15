@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: lint + test (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Test
+        run: pytest tests/ -v
+
+  loop-closure:
+    name: loop closure (simulator exercises the live API)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      # Proves the claim the whole project rests on: the simulator discovers and
+      # exercises every endpoint straight from /openapi.json, with no hand-editing.
+      - name: Start API
+        run: |
+          uvicorn app.main:app --port 8000 &
+          for _ in $(seq 1 40); do
+            curl -sf http://localhost:8000/health && break
+            sleep 0.25
+          done
+
+      - name: Simulate traffic
+        run: python scripts/simulate.py http://localhost:8000 30
+
+      - name: Analyze usage signal
+        run: python scripts/analyze_usage.py usage_log.jsonl
+
+      # The loop must also run for an API that ships no domain config at all.
+      - name: Simulate with no edge-case overlay (generic mode)
+        run: |
+          mv edge_cases.json /tmp/edge_cases.json
+          python scripts/simulate.py http://localhost:8000 5

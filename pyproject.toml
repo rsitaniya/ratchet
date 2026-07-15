@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "dev-flywheel"
 version = "0.5.0"
@@ -9,10 +13,10 @@ license-files = ["LICENSE", "NOTICE"]
 authors = [{ name = "Rohan Sitaniya" }]
 keywords = ["agentic-ai", "llm", "claude-code", "fastapi", "developer-tools", "ai-agents"]
 classifiers = [
+    # No License classifier: superseded by the PEP 639 `license` expression above.
     "Development Status :: 4 - Beta",
     "Framework :: FastAPI",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -35,6 +39,10 @@ dev = [
 Homepage = "https://github.com/rsitaniya/dev-flywheel"
 Repository = "https://github.com/rsitaniya/dev-flywheel"
 Changelog = "https://github.com/rsitaniya/dev-flywheel/blob/main/CHANGELOG.md"
+
+[tool.setuptools]
+# The example app is the only importable package; scripts/ are run directly.
+packages = ["app"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

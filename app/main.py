@@ -1,13 +1,13 @@
 import json
 import math
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 USAGE_LOG = Path("usage_log.jsonl")
 
@@ -19,8 +19,8 @@ SKIP_USAGE_PATHS = {"/openapi.json", "/docs", "/redoc", "/docs/oauth2-redirect",
 
 app = FastAPI(
     title="Calculator API",
-    description="""
-A minimal arithmetic calculator exposing six operations over HTTP.
+    description=r"""
+A minimal arithmetic calculator exposing seven operations over HTTP.
 
 ## Usage Signal
 
@@ -80,7 +80,9 @@ class ErrorResponse(BaseModel):
 
 
 class BatchItem(BaseModel):
-    op: Operation = Field(..., description="Arithmetic operation: add | subtract | multiply | divide | safe_divide | mod | abs")
+    op: Operation = Field(
+        ..., description="Arithmetic operation: add | subtract | multiply | divide | safe_divide | mod | abs"
+    )
     a: float = Field(..., description="First operand")
     b: float = Field(..., description="Second operand")
 
@@ -103,7 +105,7 @@ async def usage_logger(request: Request, call_next):
     if request.url.path not in SKIP_USAGE_PATHS:
         params = request.query_params
         record = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "path": request.url.path,
             "method": request.method,
             "operation": params.get("op"),
@@ -152,9 +154,14 @@ this file to find patterns (error rates, input distributions) and propose new fe
 )
 async def calculate(
     request: Request,
-    op: Operation = Query(..., description="Arithmetic operation: add | subtract | multiply | divide | safe_divide | mod | abs"),
+    op: Operation = Query(
+        ..., description="Arithmetic operation: add | subtract | multiply | divide | safe_divide | mod | abs"
+    ),
     a: float = Query(..., description="First operand — supports negatives, floats, large numbers"),
-    b: float = Query(..., description="Second operand — b=0 triggers DivisionByZero error for divide and mod; safe_divide returns null"),
+    b: float = Query(
+        ...,
+        description="Second operand — b=0 triggers DivisionByZero error for divide and mod; safe_divide returns null",
+    ),
 ) -> CalculateResponse:
     for name, value in (("a", a), ("b", b)):
         if not math.isfinite(value):
@@ -197,7 +204,12 @@ async def calculate(
     "/calculate/batch",
     response_model=list[BatchResultItem],
     responses={
-        200: {"description": "Array of results in request order; same length as input. Each item contains either `result` (float) on success or `error`/`error_type` on per-item failure."},
+        200: {
+            "description": (
+                "Array of results in request order; same length as input. Each item contains "
+                "either `result` (float) on success or `error`/`error_type` on per-item failure."
+            )
+        },
         422: {"model": ErrorResponse, "description": "Malformed request body (invalid op, non-numeric operand, etc.)"},
     },
     summary="Run a batch of arithmetic operations",
@@ -245,14 +257,16 @@ async def calculate_batch(body: list[BatchItem]) -> list[BatchResultItem]:
                     error_type="DivisionByZero",
                 ))
             else:
+                # Operands are bound as defaults so each lambda captures this
+                # iteration's values rather than the loop variable.
                 ops = {
-                    Operation.add: lambda: a + b,
-                    Operation.subtract: lambda: a - b,
-                    Operation.multiply: lambda: a * b,
-                    Operation.safe_divide: lambda: a / b,
-                    Operation.divide: lambda: a / b,
-                    Operation.mod: lambda: a % b,
-                    Operation.abs: lambda: abs(a - b),
+                    Operation.add: lambda a=a, b=b: a + b,
+                    Operation.subtract: lambda a=a, b=b: a - b,
+                    Operation.multiply: lambda a=a, b=b: a * b,
+                    Operation.safe_divide: lambda a=a, b=b: a / b,
+                    Operation.divide: lambda a=a, b=b: a / b,
+                    Operation.mod: lambda a=a, b=b: a % b,
+                    Operation.abs: lambda a=a, b=b: abs(a - b),
                 }
                 result = ops[op]()
                 if not math.isfinite(result):
