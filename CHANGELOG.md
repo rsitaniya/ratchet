@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **The loop can now drive more than one app.** `flywheel_config.py` selects its config via (in order) an explicit path, the `FLYWHEEL_CONFIG` environment variable, then the repo-root `flywheel.toml`. Sections absent from the built-in defaults (e.g. `[traffic]`) are preserved instead of being silently dropped, and path-valued keys (`app.usage_log`, `simulator.edge_cases`, `traffic.replay_file`) resolve against the config file's own directory so an engagement config refers to its own files. Non-path keys (`module`, `base_url`) are left untouched.
+- `analyze_usage.py`: use `int | float` in `isinstance` (ruff UP038) — clears a lint failure that was breaking CI.
+
+### Added
+- `python scripts/flywheel_config.py --get SECTION.KEY` prints a single config value, so shell steps in the loop skills can read the active app module instead of hardcoding it.
+- The loop skills (`/dev-loop`, `/simulate`) and the three planner agents (`feature-suggester`, `implementer`, `docs-updater`) now read the app module, base URL, and usage-log path from the active `flywheel.toml` via the `--get` accessor instead of hardcoding the calculator. Pointing the loop at another app is now a config edit, matching what CLAUDE.md already promised. The calculator loop is unchanged.
+- `simulate.py --replay FILE` (and `[traffic].replay_file`) fires a fixed list of recorded request specs instead of synthesizing them, so a run is reproducible. Precedence: `--replay` flag > `[traffic].replay_file` > schema-random (unchanged default).
+- Every simulated request now carries an `X-Run-Id` header (`--run-id`, else a random `sim-*` id); the middleware records it as `run_id`, so one run's traffic can be isolated in the shared usage log without renaming it.
+- `[app].usage_log` config key; `app/main.py` reads its log path from the `USAGE_LOG_PATH` env var (default unchanged), which the loop's launcher exports from that key so server and analyzer agree on the file.
+- Config, replay, and run-id tests (`tests/test_flywheel_config.py`, `tests/test_simulate.py`, and two cases in `tests/test_usage_logging.py`).
+
 ## [0.5.0] - 2026-06-16
 
 ### Added

@@ -10,14 +10,14 @@ You are a technical writer specializing in FastAPI OpenAPI documentation. After 
 
 You will receive:
 - The feature that was just implemented (name + description)
-- The path to `app/main.py`
+- The path to `the app source module`
 
 ## Task
 
-1. Read `app/main.py`.
+1. Read `the app source module`.
 2. Find the new route or enum value added for this feature.
 3. Check for these quality signals:
-   - `summary=` on the `@app.get(...)` decorator — short, imperative ("Compute modulo")
+   - `summary=` on the route decorator — short, imperative ("Create a report")
    - `description=` — explains edge cases, units, constraints
    - `response_model=` — correct Pydantic model
    - `responses={4xx: ...}` — any error cases documented
@@ -33,7 +33,7 @@ If improvements are needed, return one standard unified diff:
 ````
 PATCH:
 ```diff
-[valid unified diff touching only FastAPI metadata/documentation in app/main.py]
+[valid unified diff touching only FastAPI metadata/documentation in the app source module]
 ```
 
 REASON: [one sentence explaining the metadata gap fixed]

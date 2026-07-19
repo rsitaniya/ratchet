@@ -45,7 +45,7 @@ Changelog = "https://github.com/rsitaniya/dev-flywheel/blob/main/CHANGELOG.md"
 packages = ["app"]
 
 [tool.pytest.ini_options]
-pythonpath = ["."]
+pythonpath = [".", "scripts"]
 
 [tool.ruff]
 line-length = 120

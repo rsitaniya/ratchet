@@ -43,3 +43,18 @@ def test_health_is_not_recorded_as_signal():
     client.get("/health")
     recs = [r for r in _records() if r.get("path") == "/health"]
     assert recs == [], "infra endpoints must not pollute product signal"
+
+
+def test_run_id_header_is_recorded():
+    # The X-Run-Id header lets one replay run be isolated from another when
+    # measuring before/after, without renaming the shared server-owned log.
+    client.get("/calculate", params={"op": "add", "a": 1, "b": 2}, headers={"X-Run-Id": "run-42"})
+    recs = [r for r in _records() if r.get("run_id") == "run-42"]
+    assert recs, "expected the run_id header to be recorded on the usage record"
+
+
+def test_run_id_absent_is_null():
+    client.get("/calculate", params={"op": "subtract", "a": 5, "b": 1})
+    recs = [r for r in _records() if r.get("path") == "/calculate"]
+    assert "run_id" in recs[-1], "run_id field must always be present"
+    assert recs[-1]["run_id"] is None, "run_id defaults to null when the header is absent"

@@ -15,29 +15,37 @@ fully automated bonus, run this skill through Claude Code's built-in `/loop` run
 
 ## STEP 1 — Simulate
 
+Everything domain-specific comes from the active `flywheel.toml` (selected by
+`$FLYWHEEL_CONFIG`, else the repo-root file). Read the app module, base URL, and
+usage-log path from it rather than hardcoding — that is what lets this one loop
+drive any app.
+
 Ensure the API server is running:
 
 ```bash
-curl -s http://localhost:8000/health || echo "SERVER DOWN"
+BASE_URL=$(python scripts/flywheel_config.py --get app.base_url)
+curl -s "$BASE_URL/health" || echo "SERVER DOWN"
 ```
 
-If the server is down, start it:
+If the server is down, start it (exporting the config's usage-log path so the
+server, simulator, and analyzer all agree on one file):
 
 ```bash
-uvicorn app.main:app --reload &
+export USAGE_LOG_PATH=$(python scripts/flywheel_config.py --get app.usage_log)
+uvicorn "$(python scripts/flywheel_config.py --get app.module)" --reload &
 sleep 2
 ```
 
-Run the simulator to populate `usage_log.jsonl`:
+Run the simulator (no args → it reads the base URL and request count from config):
 
 ```bash
-python scripts/simulate.py http://localhost:8000 30
+python scripts/simulate.py
 ```
 
 Show the current line count in the log:
 
 ```bash
-wc -l usage_log.jsonl
+wc -l "$(python scripts/flywheel_config.py --get app.usage_log)"
 ```
 
 ---
@@ -46,9 +54,17 @@ wc -l usage_log.jsonl
 
 Invoke the **feature-suggester** subagent:
 
+First resolve the app source file and usage-log path from config (module
+`pkg.mod:app` → source `pkg/mod.py`):
+
+```bash
+python scripts/flywheel_config.py --get app.usage_log
+python scripts/flywheel_config.py --get app.module   # e.g. app.main:app → app/main.py
+```
+
 ```
 Agent: feature-suggester
-Input: "Run scripts/analyze_usage.py on usage_log.jsonl, read app/main.py for currently-supported operations, and propose 2-3 features that are NOT already implemented."
+Input: "Run scripts/analyze_usage.py on <usage_log path from config>, read <app source file from config> for currently-supported functionality, and propose 2-3 features that are NOT already implemented."
 ```
 
 The subagent returns a PROPOSALS block with 2-3 options, each with:
@@ -85,14 +101,14 @@ Invoke the **implementer** subagent:
 
 ```
 Agent: implementer
-Input: "Implement: [chosen feature name and description]. Read app/main.py for context. Return PATCH, TEST_FILE, CHANGELOG, and EDGE_CASES."
+Input: "Implement: [chosen feature name and description]. Read <app source file from config> for context (its import path is <app.module from config>). Return PATCH, TEST_FILE, CHANGELOG, and EDGE_CASES."
 ```
 
 The subagent returns structured output with exact delimiters:
 ````
 PATCH:
 ```diff
-[standard unified diff updating app/main.py and adding the TestClient test file]
+[standard unified diff updating the app source module and adding the TestClient test file]
 ```
 
 TEST_FILE: tests/test_[name].py
@@ -130,23 +146,26 @@ pytest tests/ -v
 ## STEP 6 — Restart server to reload new routes
 
 ```bash
-pkill -f "uvicorn app.main:app" 2>/dev/null || true
+APP=$(python scripts/flywheel_config.py --get app.module)
+pkill -f "uvicorn $APP" 2>/dev/null || true
 sleep 1
-uvicorn app.main:app --reload &
+export USAGE_LOG_PATH=$(python scripts/flywheel_config.py --get app.usage_log)
+uvicorn "$APP" --reload &
 sleep 2
 ```
 
 Verify the new endpoint/operation appears in the live schema:
 
 ```bash
-curl -s http://localhost:8000/openapi.json | python3 -c "
+BASE_URL=$(python scripts/flywheel_config.py --get app.base_url)
+curl -s "$BASE_URL/openapi.json" | python3 -c "
 import json, sys
 schema = json.load(sys.stdin)
 print('Paths:', list(schema['paths'].keys()))
-# Print enum values if Operation schema exists
-op_schema = schema.get('components', {}).get('schemas', {}).get('Operation', {})
-if op_schema:
-    print('Operations:', op_schema.get('enum', []))
+# Surface any enum-valued params generically (e.g. an op enum), whatever the app.
+for name, comp in schema.get('components', {}).get('schemas', {}).items():
+    if isinstance(comp, dict) and comp.get('enum'):
+        print(f'{name} enum:', comp['enum'])
 "
 ```
 
@@ -158,7 +177,7 @@ Invoke the **docs-updater** subagent:
 
 ```
 Agent: docs-updater
-Input: "Feature just implemented: [feature name and description]. Check app/main.py for complete OpenAPI metadata."
+Input: "Feature just implemented: [feature name and description]. Check <app source file from config> for complete OpenAPI metadata."
 ```
 
 The subagent returns either `NO_CHANGES_NEEDED` or a `PATCH:` unified diff.
@@ -172,7 +191,7 @@ The subagent returns either `NO_CHANGES_NEEDED` or a `PATCH:` unified diff.
 ## STEP 8 — Verify loop closure
 
 ```bash
-python scripts/simulate.py http://localhost:8000 5
+python scripts/simulate.py "$(python scripts/flywheel_config.py --get app.base_url)" 5
 ```
 
 Confirm the new feature — **whatever its shape** — shows up in the simulator's discovery
@@ -216,4 +235,4 @@ STEP 3 is the only blocking step; press Ctrl+C or choose "Skip this cycle" to st
 - **Human approval (STEP 3) is the ONLY blocking step.** All other steps chain automatically in each cycle.
 - **Continuous mode uses Claude Code's built-in `/loop` runner.** Use `/loop /dev-loop`; stop with Ctrl+C.
 - **Do not skip the test step.** A feature is not shipped until `pytest tests/ -v` passes.
-- **Do not truncate usage_log.jsonl** — historical entries are the signal for future cycles.
+- **Do not truncate the usage log** — historical entries are the signal for future cycles.

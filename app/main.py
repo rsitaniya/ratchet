@@ -1,5 +1,6 @@
 import json
 import math
+import os
 import time
 from datetime import UTC, datetime
 from enum import Enum
@@ -9,7 +10,11 @@ from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-USAGE_LOG = Path("usage_log.jsonl")
+# Where the usage middleware appends records. The launcher (the loop's skills)
+# exports USAGE_LOG_PATH from the active flywheel.toml's [app].usage_log so the
+# server, analyzer, and any second app all agree on the file; absent that env
+# var it falls back to the repo-root default, which is what the calculator uses.
+USAGE_LOG = Path(os.environ.get("USAGE_LOG_PATH", "usage_log.jsonl"))
 
 # Paths that describe or operate the service rather than being product surface.
 # Traffic to these is infra noise, not usage signal — so it is NOT recorded.
@@ -114,6 +119,7 @@ async def usage_logger(request: Request, call_next):
             "latency_ms": latency_ms,
             "error_type": getattr(request.state, "error_type", None),
             "source": request.headers.get("x-usage-source", "unknown"),
+            "run_id": request.headers.get("x-run-id"),
         }
         with USAGE_LOG.open("a") as f:
             f.write(json.dumps(record) + "\n")

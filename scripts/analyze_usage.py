@@ -91,7 +91,7 @@ def main() -> None:
         if status == 404 and e.get("path"):
             missing[e["path"]] += 1
         lat = e.get("latency_ms")
-        if isinstance(lat, (int, float)):
+        if isinstance(lat, int | float):
             s["latency"].append(lat)
         sources[e.get("source") or "unknown"] += 1
         inp = e.get("inputs", {}) or {}
