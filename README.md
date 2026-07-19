@@ -138,6 +138,11 @@ Real numbers from `evaluate.py`, onboarding a new source across two approved cyc
 | fully-correct rate | 0% | 0% | 100% |
 | regression on the onboarded source | — | none | none |
 
+Then it reconciles records *across* sources: **entity matching** (F1 0 → 1.00 as
+the loop grows fuzzy-match rules) and **data fusion** (accuracy 0.875 → 1.00 as it
+learns per-attribute conflict resolution) — again scored against gold, with the
+match/fuse engines protected alongside the evaluator.
+
 Two things make this different from a code-only autonomous loop (OpenHands, Forge):
 it **starts from product signal**, not a task prompt; and its metrics **can't be
 gamed by returning 200** — a plausible-but-wrong mapping (`sales → assets`) is

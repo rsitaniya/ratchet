@@ -112,10 +112,16 @@ jobs:
           python engagements/madi_onboarding/evaluate.py > /tmp/eval.json
           python - <<'PY'
           import json
-          d = json.load(open("/tmp/eval.json"))["per_source"]
+          e = json.load(open("/tmp/eval.json"))
+          d = e["per_source"]
           assert d["dbpedia"]["fully_correct_rate"] == 1.0, d["dbpedia"]
           assert d["forbes"]["integrated_rate"] == 0.0, d["forbes"]
-          print("baseline oracle OK:", d)
+          # Stage 2 seed baseline: exact-name matching finds nothing; naive fusion
+          # is partial. Both are scored against gold the loop cannot touch.
+          rec = e["reconcile"]
+          assert rec["entity_matching"]["f1"] == 0.0, rec["entity_matching"]
+          assert rec["fusion"]["accuracy"] == 0.875, rec["fusion"]
+          print("baseline oracle OK (schema+value+matching+fusion):", e)
           PY
 
       # The loop must not be able to edit what scores it.

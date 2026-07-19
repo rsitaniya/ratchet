@@ -57,6 +57,34 @@ def summarize(rows: list[dict], source: str | None = None, run_id: str | None = 
     return {"sources": dict(sources), "gaps": gaps}
 
 
+def summarize_reconcile(rows: list[dict], run_id: str | None = None) -> dict:
+    """Reconcile signal: match rate (matching gap) and per-attribute conflict
+    counts (fusion gap — which attributes most need a resolution rule)."""
+    def keep(r):
+        return run_id is None or r.get("run_id") == run_id
+
+    matched = unmatched = 0
+    conflicts: dict[str, set] = defaultdict(set)
+    for r in rows:
+        if not keep(r):
+            continue
+        if r.get("event") == "reconcile_summary":
+            matched += r.get("matched", 0)
+            unmatched += r.get("unmatched_left", 0) + r.get("unmatched_right", 0)
+        elif r.get("event") == "reconcile" and r.get("stage") == "fusion":
+            conflicts[r["field"]].add(r.get("record_id_hash"))
+    total = matched + unmatched
+    ranked = sorted(
+        ({"field": f, "conflicting_pairs": len(h)} for f, h in conflicts.items()),
+        key=lambda x: x["conflicting_pairs"], reverse=True,
+    )
+    return {
+        "match_rate": round(matched / total, 4) if total else 0.0,
+        "matched": matched, "unmatched": unmatched,
+        "attribute_conflicts": ranked,
+    }
+
+
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description="Rank onboarding gaps from integration telemetry")
     ap.add_argument("log_path", nargs="?", default="usage_log.jsonl")

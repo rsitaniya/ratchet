@@ -16,7 +16,12 @@ evaluator = "python engagements/madi_onboarding/evaluate.py"
 # what measures you is not a fix. (Adapters under adapters/*.toml and new
 # normalizers ARE writable: a broken normalizer can only lower the score, and
 # gold is unreachable, so those can't inflate the metric.)
-paths = ["**/evaluate.py", "**/adapters.py", "**/fixtures/**", "**/gold_*.json", "**/*_gold.json"]
+paths = [
+    "**/evaluate.py",
+    "**/adapters.py", "**/matching.py", "**/fusion.py",   # the engines the evaluator runs
+    "**/fixtures/**",                                       # sources + gold (records, pairs, fused)
+    "**/gold_*.json", "**/*_gold.json",
+]
 
 [simulator]
 # No schema-random edge-case overlay: this engagement is replay-driven.

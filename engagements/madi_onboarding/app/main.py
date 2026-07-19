@@ -26,6 +26,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from engagements.madi_onboarding import adapters as A
+from engagements.madi_onboarding import fusion, matching
 
 ENGAGEMENT_DIR = Path(__file__).resolve().parent.parent
 TARGET_SCHEMA = json.loads((ENGAGEMENT_DIR / "fixtures" / "target_schema.json").read_text())
@@ -113,6 +114,74 @@ async def ingest(req: IngestRequest, request: Request):
     if result["integrated"]:
         return {"integrated": True, "target": result["target"]}
     return JSONResponse(status_code=422, content={"integrated": False, "failures": result["failures"]})
+
+
+class ReconcileRequest(BaseModel):
+    left_source: str = Field(..., description="Source system name for the left record set")
+    right_source: str = Field(..., description="Source system name for the right record set")
+    left: list[dict] = Field(..., description="Schema-mapped records from the left source")
+    right: list[dict] = Field(..., description="Schema-mapped records from the right source")
+
+
+@app.post("/reconcile", summary="Match + fuse records across two sources")
+async def reconcile(req: ReconcileRequest, request: Request):
+    """Entity-match the two record sets with the current matching rules, fuse each
+    matched pair with the current fusion rules, and emit reconciliation signal:
+    which records stayed unmatched, and which attributes conflict across matches.
+    """
+    attrs = list(TARGET_SCHEMA["attributes"])
+    predicted = matching.match(req.left, req.right, matching.load_rules())
+    frules = fusion.load_rules()
+    left_by = {r.get("record_id"): r for r in req.left}
+    right_by = {r.get("record_id"): r for r in req.right}
+    matched_left = {lid for lid, _ in predicted}
+    matched_right = {rid for _, rid in predicted}
+
+    run_id = request.headers.get("x-run-id")
+    now = datetime.now(UTC).isoformat()
+    events: list[dict] = []
+    fused_out = []
+    for lid, rid in predicted:
+        cluster = [
+            {"source": req.left_source, "record": left_by[lid]},
+            {"source": req.right_source, "record": right_by[rid]},
+        ]
+        fused_out.append({"left_id": lid, "right_id": rid, "fused": fusion.fuse(cluster, frules, attrs)})
+        for attr in attrs:
+            lv, rv = left_by[lid].get(attr), right_by[rid].get(attr)
+            if lv is not None and rv is not None and lv != rv:
+                events.append({
+                    "timestamp": now, "event": "reconcile", "run_id": run_id, "stage": "fusion",
+                    "error_code": "ATTR_CONFLICT", "field": attr,
+                    "record_id_hash": _hash_id(f"{lid}|{rid}"),
+                })
+    for rec in req.left:
+        if rec.get("record_id") not in matched_left:
+            events.append({
+                "timestamp": now, "event": "reconcile", "run_id": run_id, "stage": "matching",
+                "error_code": "UNMATCHED", "field": req.left_source,
+                "record_id_hash": _hash_id(rec.get("record_id")),
+            })
+    for rec in req.right:
+        if rec.get("record_id") not in matched_right:
+            events.append({
+                "timestamp": now, "event": "reconcile", "run_id": run_id, "stage": "matching",
+                "error_code": "UNMATCHED", "field": req.right_source,
+                "record_id_hash": _hash_id(rec.get("record_id")),
+            })
+    events.append({
+        "timestamp": now, "event": "reconcile_summary", "run_id": run_id,
+        "matched": len(predicted),
+        "unmatched_left": len(req.left) - len(matched_left),
+        "unmatched_right": len(req.right) - len(matched_right),
+    })
+    _emit(events)
+
+    return {
+        "matched": fused_out,
+        "unmatched_left": [lid for lid in left_by if lid not in matched_left],
+        "unmatched_right": [rid for rid in right_by if rid not in matched_right],
+    }
 
 
 @app.get("/health", summary="Health check")

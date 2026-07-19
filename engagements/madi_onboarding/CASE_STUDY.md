@@ -1,10 +1,11 @@
 # Case study: onboarding a new partner data source with the flywheel
 
 **What this shows:** dev-flywheel pointed at a partner-data onboarding API,
-growing a new source's integration from **0% to 100% correct** across two
-approved cycles — scored the whole way against **held-out gold labels** the loop
-is forbidden to touch. This is a reproducible benchmark of the loop's decisions,
-not a business-impact claim.
+growing a new source's integration from **0% to 100% correct** (schema matching +
+value normalization), then reconciling records across sources with **entity
+matching (F1 0→1.0)** and **data fusion (accuracy 0.875→1.0)** — every step scored
+against **held-out gold labels** the loop is forbidden to touch. This is a
+reproducible benchmark of the loop's decisions, not a business-impact claim.
 
 ## The setup
 
@@ -73,12 +74,41 @@ wrong normalizer only lowers value recall. A plausible-but-wrong mapping is
 caught too: pointing `sales → assets` instead of `revenue` drops both schema F1
 and fully-correct rate.
 
+## Stage 2: entity matching + data fusion
+
+Onboarding a source into the schema is step one. Step two is reconciling records
+*across* sources: deciding which records are the same company (entity matching),
+then merging matched records into one, resolving conflicts (data fusion). Same
+pattern — declarative rules the loop grows, scored against gold the loop can't
+touch (labeled pairs for matching, hand-fused records for fusion).
+
+`POST /reconcile` runs both; the signal is unmatched records (matching gap) and
+per-attribute conflicts (fusion gap). Two more approved cycles, real numbers from
+`evaluate.py`:
+
+| metric | Baseline | Cycle 1 (matching) | Cycle 2 (fusion) |
+|---|---:|---:|---:|
+| entity-matching F1 | 0.00 | 1.00 | 1.00 |
+| fusion accuracy | 0.875 | 0.875 | 1.00 |
+
+- **Cycle 1** grew `matching_rules.toml` from exact-name (which matches nothing
+  across `"Nimbus Robotics"` / `"Nimbus Robotics, Inc."`) to fuzzy name
+  (Jaro-Winkler) + city, blocked on country. F1 0 → 1.00, no fusion regression.
+- **Cycle 2** grew `fusion_rules.toml`: the naive rule took every field from the
+  first source, so it used a stale `revenue`; adding a per-attribute rule that
+  prefers the more recent source lifted fusion accuracy 0.875 → 1.00, EM
+  unchanged.
+- The matching and fusion **engines** are protected alongside the evaluator; only
+  the rule files are writable, and a wrong rule only lowers the score.
+
 ## Honest limits
 
-- These are results on a small fixture (7 companies) and, with the downloader, on
-  MaDI-Bench's Companies task. They measure schema matching + value normalization
-  (Stage 1). Entity matching and data fusion — where MaDI's baselines are far from
-  solved (fully-correct rate ~0.05) — are deliberately out of scope here.
+- These are results on a small fixture (6–7 records per stage) and, with the
+  downloader, on MaDI-Bench's Companies task. Stages covered: schema matching,
+  value normalization, entity matching, data fusion. What's still deferred is the
+  hard end of MaDI — the `hard` difficulty variants and the strict end-to-end
+  fully-correct rate (~0.05 for strong baselines) — where the real research
+  headroom is.
 - "Correct" means "matches gold." That is a real oracle, but it is a benchmark,
   not evidence of production value at a specific customer.
 - The loop grows *declarative adapters*; a genuinely new normalizer is the only

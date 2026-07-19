@@ -96,13 +96,73 @@ def evaluate(sources: list[str], fixtures_dir: Path = FIXTURES_DIR, adapters_dir
     return {"per_source": per_source}
 
 
+def evaluate_reconcile(
+    fixtures_dir: Path = FIXTURES_DIR,
+    matching_rules_path: Path | None = None,
+    fusion_rules_path: Path | None = None,
+    left_source: str = "acme_crm",
+    right_source: str = "vendor_erp",
+) -> dict:
+    """Stage 2 oracle: entity-matching F1 vs gold pairs, fusion accuracy vs gold.
+
+    Fusion is scored on the GOLD-matched clusters so the fusion metric is isolated
+    from matching quality. Both read gold the loop can't touch.
+    """
+    from engagements.madi_onboarding import fusion, matching
+
+    rec = fixtures_dir / "reconcile"
+    left = _load_jsonl(rec / "left.jsonl")
+    right = _load_jsonl(rec / "right.jsonl")
+    gold_pairs = {(p["left_id"], p["right_id"]) for p in _load_jsonl(rec / "gold_pairs.jsonl")}
+    gold_fused = {g["entity"]: g for g in _load_jsonl(rec / "gold_fused.jsonl")}
+    target_attrs = list(json.loads((fixtures_dir / "target_schema.json").read_text())["attributes"])
+
+    # --- entity matching ---
+    predicted = set(matching.match(left, right, matching.load_rules(matching_rules_path)))
+    tp = len(predicted & gold_pairs)
+    precision = tp / len(predicted) if predicted else 0.0
+    recall = tp / len(gold_pairs) if gold_pairs else 0.0
+    f1 = 0.0 if precision + recall == 0 else 2 * precision * recall / (precision + recall)
+
+    # --- data fusion (on gold-matched clusters) ---
+    frules = fusion.load_rules(fusion_rules_path)
+    left_by = {r["record_id"]: r for r in left}
+    right_by = {r["record_id"]: r for r in right}
+    correct = total = 0
+    for lid, rid in gold_pairs:
+        cluster = [
+            {"source": left_source, "record": left_by[lid]},
+            {"source": right_source, "record": right_by[rid]},
+        ]
+        fused = fusion.fuse(cluster, frules, target_attrs)
+        gold = {k: v for k, v in gold_fused[lid].items() if k != "entity"}
+        for attr, gold_val in gold.items():
+            total += 1
+            if fused.get(attr) == gold_val:
+                correct += 1
+
+    return {
+        "entity_matching": {
+            "precision": round(precision, 4), "recall": round(recall, 4), "f1": round(f1, 4),
+            "predicted": len(predicted), "gold": len(gold_pairs),
+        },
+        "fusion": {"accuracy": round(correct / total, 4) if total else 0.0},
+    }
+
+
 def _detect_regressions(current: dict, baseline: dict) -> list[str]:
-    """A previously-supported source regresses if its fully-correct rate drops."""
+    """A previously-supported source or capability regresses if its headline metric drops."""
     regressions = []
     for source, base in baseline.get("per_source", {}).items():
-        cur = current["per_source"].get(source)
+        cur = current.get("per_source", {}).get(source)
         if cur and cur["fully_correct_rate"] < base["fully_correct_rate"]:
             regressions.append(source)
+    b_rec, c_rec = baseline.get("reconcile"), current.get("reconcile")
+    if b_rec and c_rec:
+        if c_rec["entity_matching"]["f1"] < b_rec["entity_matching"]["f1"]:
+            regressions.append("entity_matching")
+        if c_rec["fusion"]["accuracy"] < b_rec["fusion"]["accuracy"]:
+            regressions.append("fusion")
     return regressions
 
 
@@ -118,6 +178,9 @@ def main(argv: list[str] | None = None) -> None:
         [s.strip() for s in args.sources.split(",") if s.strip()],
         Path(args.fixtures), Path(args.adapters),
     )
+    # Stage 2 reconcile metrics, when the reconcile fixtures are present.
+    if (Path(args.fixtures) / "reconcile" / "gold_pairs.jsonl").exists():
+        result["reconcile"] = evaluate_reconcile(Path(args.fixtures))
     if args.baseline:
         baseline = json.loads(Path(args.baseline).read_text())
         regressions = _detect_regressions(result, baseline)

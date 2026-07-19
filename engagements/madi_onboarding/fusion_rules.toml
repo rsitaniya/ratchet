@@ -1,0 +1,8 @@
+# Seed fusion rules — naive. Every attribute is taken from the first source in
+# priority order (acme_crm). That gets clean names right, but revenue is wrong:
+# vendor_erp carries the more recent revenue, and the gold fused records use it.
+# The resulting sub-1.0 fusion accuracy is the signal the loop grows from, by
+# adding a per-attribute rule. The implementer may edit this file but never
+# fusion.py or the gold fused records.
+default_strategy = "prefer_source"
+source_priority = ["acme_crm", "vendor_erp"]
