@@ -61,9 +61,20 @@ and a spike in negative `a` is what surfaced demand for `abs`.
 ## Step 4 — Run the loop
 
 ```bash
-uvicorn $(python -c "import tomllib;print(tomllib.load(open('flywheel.toml','rb'))['app']['module'])") --reload
+uvicorn "$(python scripts/flywheel_config.py --get app.module)" --reload
 /dev-loop
 ```
+
+To run the loop against a *second* app without disturbing the first, put its
+config in its own file and select it per-invocation:
+
+```bash
+export FLYWHEEL_CONFIG=path/to/your/flywheel.toml
+```
+
+`FLYWHEEL_CONFIG` (or an explicit path arg) beats the repo-root `flywheel.toml`,
+and path-valued keys (`usage_log`, `edge_cases`, `traffic.replay_file`) resolve
+against that config file's own directory.
 
 ---
 
@@ -91,3 +102,30 @@ endpoint-generic. It must record at minimum:
 Recording **404s is deliberate and load-bearing** — a request to an endpoint you
 haven't built is the strongest possible signal that someone wants it. Don't filter
 those out.
+
+---
+
+## Going further: engagements with a held-out oracle
+
+The calculator improves by adding endpoints, scored only by "does it 404 less."
+For domains where correctness matters, package the app plus its own analyzer and a
+**held-out evaluator** as an engagement — see `engagements/madi_onboarding/` for a
+worked example (partner-data onboarding, scored against gold labels).
+
+The extra pieces, all generic to the loop:
+
+- **`[app].evaluator`** — a command the loop runs at Gate 2 to score a proposed
+  patch against held-out truth (schema F1, value accuracy, regression), not just
+  HTTP status. Leave it empty and the loop behaves as before.
+- **`[protected].paths`** — globs the implementer patch may never touch (the
+  evaluator, gold labels, fixtures, scoring). `scripts/check_protected_paths.py`
+  rejects violating patches before `git apply`, so the loop can't pass by editing
+  what measures it.
+- **A domain analyzer** the feature-suggester is pointed at (the de-hardcoded
+  agents read whatever app/analyzer they're handed), for signal richer than HTTP
+  status — e.g. field-level integration failures.
+- **Declarative growth** — design the app to read config the loop can extend
+  (adapters, rules) so most cycles ship *data*, not agent-written code.
+
+Licensed benchmark data is never committed; ship a checksum-pinned downloader
+instead (`engagements/madi_onboarding/download_data.py`).

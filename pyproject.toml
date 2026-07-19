@@ -41,8 +41,10 @@ Repository = "https://github.com/rsitaniya/dev-flywheel"
 Changelog = "https://github.com/rsitaniya/dev-flywheel/blob/main/CHANGELOG.md"
 
 [tool.setuptools]
-# The example app is the only importable package; scripts/ are run directly.
-packages = ["app"]
+# Importable packages: the example calculator app, plus engagement packages so
+# their scripts (evaluate.py, analyze_integration.py) import `engagements.*`
+# regardless of the working directory. scripts/ are run directly, not imported.
+packages = ["app", "engagements", "engagements.madi_onboarding", "engagements.madi_onboarding.app"]
 
 [tool.pytest.ini_options]
 pythonpath = [".", "scripts"]

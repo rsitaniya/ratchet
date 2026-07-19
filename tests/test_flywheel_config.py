@@ -24,6 +24,9 @@ def test_missing_config_returns_defaults(tmp_path):
     conf = flywheel_config.load_config(cfg)
     assert conf["app"]["module"] == "app.main:app"
     assert conf["simulator"]["default_requests"] == 30
+    # Optional loop-safety keys default to empty (present so --get never errors).
+    assert conf["app"]["evaluator"] == ""
+    assert conf["protected"]["paths"] == []
 
 
 def test_unknown_section_survives(tmp_path):

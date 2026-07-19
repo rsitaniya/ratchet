@@ -71,3 +71,65 @@ jobs:
         run: |
           mv edge_cases.json /tmp/edge_cases.json
           python scripts/simulate.py http://localhost:8000 5
+
+  madi-engagement:
+    name: madi onboarding engagement (oracle-backed)
+    runs-on: ubuntu-latest
+    env:
+      FLYWHEEL_CONFIG: engagements/madi_onboarding/flywheel.toml
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      # The second app runs off the SAME generic loop, selected purely by config.
+      - name: Build replay and start the ingest app (via the config accessor)
+        run: |
+          export USAGE_LOG_PATH=$(python scripts/flywheel_config.py --get app.usage_log)
+          echo "USAGE_LOG_PATH=$USAGE_LOG_PATH" >> "$GITHUB_ENV"
+          python engagements/madi_onboarding/to_replay.py --source forbes
+          uvicorn "$(python scripts/flywheel_config.py --get app.module)" --port 8000 &
+          for _ in $(seq 1 40); do curl -sf http://localhost:8000/health && break; sleep 0.25; done
+
+      - name: Replay the new source and rank integration gaps
+        run: |
+          python scripts/simulate.py --run-id ci-baseline
+          python engagements/madi_onboarding/analyze_integration.py "$USAGE_LOG_PATH" --source forbes
+
+      # The oracle: at the seed state forbes is unonboarded (0) and the already-
+      # onboarded dbpedia is perfect (1.0). These come from held-out gold, so a
+      # broken evaluator or a gamed adapter would fail this gate.
+      - name: Evaluate baseline against gold
+        run: |
+          python engagements/madi_onboarding/evaluate.py > /tmp/eval.json
+          python - <<'PY'
+          import json
+          d = json.load(open("/tmp/eval.json"))["per_source"]
+          assert d["dbpedia"]["fully_correct_rate"] == 1.0, d["dbpedia"]
+          assert d["forbes"]["integrated_rate"] == 0.0, d["forbes"]
+          print("baseline oracle OK:", d)
+          PY
+
+      # The loop must not be able to edit what scores it.
+      - name: Protected-path guard rejects an evaluator edit
+        run: |
+          printf 'diff --git a/engagements/madi_onboarding/evaluate.py b/engagements/madi_onboarding/evaluate.py\n--- a/engagements/madi_onboarding/evaluate.py\n+++ b/engagements/madi_onboarding/evaluate.py\n@@ -1 +1 @@\n-x\n+y\n' > /tmp/evil.patch
+          if python scripts/check_protected_paths.py /tmp/evil.patch; then
+            echo "ERROR: evaluator edit was NOT rejected"; exit 1
+          else
+            echo "evaluator edit correctly rejected (exit 2)"
+          fi
+
+      # Reproducibility check: the pinned downloader fetches the real MaDI data and
+      # verifies git blob SHAs. Non-fatal so external availability never reds CI.
+      - name: Verify pinned downloader (network, non-fatal)
+        continue-on-error: true
+        run: python engagements/madi_onboarding/download_data.py

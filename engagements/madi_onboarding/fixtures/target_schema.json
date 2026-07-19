@@ -1,0 +1,13 @@
+{
+  "_doc": "Canonical target schema for the company-onboarding engagement. Mirrors the SHAPE of MaDI-Bench's Companies target (name, founded, country, city, industry, assets, revenue, keypeople) but every value here is synthetic (invented companies) so nothing under CC BY-NC-ND is redistributed.",
+  "attributes": {
+    "name": {"type": "string", "required": true},
+    "founded": {"type": "integer", "required": true},
+    "country": {"type": "string", "required": true, "format": "iso3166-alpha2"},
+    "city": {"type": "string", "required": false},
+    "industry": {"type": "string", "required": false},
+    "assets": {"type": "number", "required": false, "unit": "usd"},
+    "revenue": {"type": "number", "required": false, "unit": "usd"},
+    "keypeople": {"type": "array", "required": false}
+  }
+}

@@ -1,0 +1,35 @@
+# Seed adapter: the first, already-onboarded source. The loop must not regress
+# these mappings while onboarding a new source.
+source = "dbpedia"
+
+[fields.company_name]
+target = "name"
+normalizer = "identity"
+
+[fields.founding_year]
+target = "founded"
+normalizer = "to_int_year"
+
+[fields.hq_country]
+target = "country"
+normalizer = "country_to_iso"
+
+[fields.hq_city]
+target = "city"
+normalizer = "identity"
+
+[fields.sector]
+target = "industry"
+normalizer = "identity"
+
+[fields.assets_usd]
+target = "assets"
+normalizer = "currency_to_usd"
+
+[fields.revenue_usd]
+target = "revenue"
+normalizer = "currency_to_usd"
+
+[fields.key_people]
+target = "keypeople"
+normalizer = "to_list"

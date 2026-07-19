@@ -76,9 +76,10 @@ Capture the full PROPOSALS text.
 
 ---
 
-## STEP 3 — HUMAN APPROVAL ⏸
+## STEP 3 — HUMAN APPROVAL: GATE 1 (approve the proposal) ⏸
 
-**This is the only blocking step in the loop.**
+**The loop has two human gates. This is the first: approving *what* to build.**
+(Gate 2, in STEP 5.5, approves the *exact tested patch* before it is kept.)
 
 Present the proposals to the user using AskUserQuestion. Show all 2-3 options
 with their signal and description. Ask the user to pick one.
@@ -120,7 +121,13 @@ EDGE_CASES: {"<op-or-feature>": [{"a": .., "b": ..}, ...]}
 
 **Orchestrator applies ALL the writes (the orchestrator is the sole writer):**
 
-1. **Code + test patch** — Extract the `PATCH:` diff into a temp file, then run `git apply --check <tempfile>`. If it passes, run `git apply <tempfile>`. If it fails, inspect the failure and either repair the diff directly or ask the implementer for a corrected unified diff.
+1. **Code + test patch** — Extract the `PATCH:` diff into a temp file.
+   - **Protected-path check (do this BEFORE `git apply --check`).** Run the deterministic checker on the patch:
+     ```bash
+     python scripts/check_protected_paths.py <tempfile>
+     ```
+     Exit 0 = clean, proceed. **Exit 2 = the patch touches a protected path** (held-out evaluator, gold labels, fixtures, scoring — read from `[protected].paths` in the active config). **REJECT the patch** — do not apply it — and ask the implementer to resubmit without touching protected files. This is what stops the loop from gaming its own test. Apps that declare no `[protected]` paths (e.g. the calculator) always pass.
+   - Then run `git apply --check <tempfile>`. If it passes, run `git apply <tempfile>`. If it fails, inspect the failure and either repair the diff directly or ask the implementer for a corrected unified diff.
 2. **Test path sanity** — Confirm `TEST_FILE:` exists after the patch and is under `tests/`.
 3. **Changelog (version-per-cycle)** — Determine the next minor version (read the current `version=` in the app module named by `[app].module` in `flywheel.toml`; bump the minor, e.g. 0.3.0 → 0.4.0). In `CHANGELOG.md`, insert a new `## [<new-version>] - <today>` section directly under `## [Unreleased]` and put the `CHANGELOG:` entry under its `### Added`. Leave `## [Unreleased]` empty.
 4. **Version bump** — Use **Edit** to update the version string in every file listed in `[app].version_files` in `flywheel.toml` (by default: `app/main.py`, `pyproject.toml`, `CHANGELOG.md`) so the running app's version always matches the latest CHANGELOG release.
@@ -140,6 +147,24 @@ pytest tests/ -v
 1. Read the error output carefully.
 2. Fix the issue directly via Edit (do not re-invoke the implementer subagent for small fixes).
 3. Re-run pytest until all tests pass.
+
+---
+
+## STEP 5.5 — HUMAN APPROVAL: GATE 2 (approve the exact tested patch) ⏸
+
+**The second gate. Approving what to build (Gate 1) does not authorize whatever
+patch the implementer happened to produce.** An agent can make tests pass by
+weakening them; a held-out evaluator and a human looking at the actual diff are
+what catch that.
+
+1. **Run the app's evaluator, if it declares one.** Read `python scripts/flywheel_config.py --get app.evaluator` (a command; empty for apps without one, e.g. the calculator — then skip to step 2). Run it and capture the machine-readable result. If the app also declares a baseline from before this cycle, compare: the primary metric must improve and no previously-passing metric may regress. If the evaluator shows a regression, treat this like a test failure — do not proceed; revert (below) or fix.
+2. **Show the human the exact change.** Present: the diff hash (`git diff | git hash-object --stdin`), the list of changed files, the diff itself (or a tight summary for large diffs), and the evaluator result. Use AskUserQuestion: "Keep this patch? (Gate 2)" with options Keep / Revert.
+3. **On Revert:** `git checkout -- .` and `git clean -fd` the newly added test/adapter files to restore the pre-patch tree, report why, and end the cycle cleanly. **On Keep:** proceed.
+
+Do NOT proceed past this gate without an explicit Keep. For the calculator
+example (no evaluator, no `[protected]` paths) this gate is a quick visual
+confirm of the diff; for an engagement with a protected evaluator it is the
+real safety boundary.
 
 ---
 
@@ -223,8 +248,9 @@ bonus is handled by Claude Code's built-in loop runner:
 /loop /dev-loop
 ```
 
-That single command repeats this cycle until stopped. The human-approval gate in
-STEP 3 is the only blocking step; press Ctrl+C or choose "Skip this cycle" to stop.
+That single command repeats this cycle until stopped. The human gates (STEP 3
+and STEP 5.5) are the blocking steps; press Ctrl+C or choose "Skip this cycle"
+to stop.
 
 ---
 
@@ -232,7 +258,8 @@ STEP 3 is the only blocking step; press Ctrl+C or choose "Skip this cycle" to st
 
 - **Subagents are read-only.** They return structured text only. This orchestrator applies every write.
 - **Subagent patches use standard unified diff format.** Validate with `git apply --check` before applying.
-- **Human approval (STEP 3) is the ONLY blocking step.** All other steps chain automatically in each cycle.
+- **Two human gates block the loop: STEP 3 (approve the proposal) and STEP 5.5 (approve the exact tested patch).** All other steps chain automatically.
+- **The implementer may never touch protected paths** (held-out evaluators, gold, fixtures, scoring). The orchestrator rejects such patches before applying (STEP 4.1). This is enforcement, not etiquette — it is what keeps the loop's own metrics honest.
 - **Continuous mode uses Claude Code's built-in `/loop` runner.** Use `/loop /dev-loop`; stop with Ctrl+C.
 - **Do not skip the test step.** A feature is not shipped until `pytest tests/ -v` passes.
 - **Do not truncate the usage log** — historical entries are the signal for future cycles.

@@ -32,6 +32,9 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "base_url": "http://localhost:8000",
         "usage_log": "usage_log.jsonl",
         "version_files": [],
+        # Optional command the dev-loop runs at Gate 2 to score a proposed patch
+        # against held-out truth. Empty for apps without an evaluator.
+        "evaluator": "",
     },
     "simulator": {
         "edge_cases": "edge_cases.json",
@@ -43,6 +46,11 @@ DEFAULTS: dict[str, dict[str, Any]] = {
     },
     "traffic": {
         "replay_file": "",
+    },
+    # Glob patterns the implementer patch may never touch (held-out evaluators,
+    # gold labels, fixtures, scoring). The orchestrator rejects patches that do.
+    "protected": {
+        "paths": [],
     },
 }
 

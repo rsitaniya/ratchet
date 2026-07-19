@@ -1,0 +1,23 @@
+{
+  "_doc": "Ground-truth field correspondences per source (source_field -> target_attr). This is the held-out oracle for schema-matching F1. Synthetic.",
+  "dbpedia": {
+    "company_name": "name",
+    "founding_year": "founded",
+    "hq_country": "country",
+    "hq_city": "city",
+    "sector": "industry",
+    "assets_usd": "assets",
+    "revenue_usd": "revenue",
+    "key_people": "keypeople"
+  },
+  "forbes": {
+    "name": "name",
+    "yearFounded": "founded",
+    "country": "country",
+    "city": "city",
+    "industry": "industry",
+    "assets": "assets",
+    "sales": "revenue",
+    "ceo": "keypeople"
+  }
+}

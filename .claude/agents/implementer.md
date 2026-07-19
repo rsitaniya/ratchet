@@ -45,6 +45,8 @@ The orchestrator merges this into the edge-cases file named by [simulator].edge_
 - If adding a new endpoint: follow the same route-decorator pattern the app already uses, with `summary=`, `description=`, `response_model=`.
 - TestClient tests only — no httpx, no live server, no `subprocess`.
 - Minimal implementation — do NOT refactor existing code.
+- **Never modify a held-out evaluator, gold labels, fixtures, or scoring code.** If the app has an evaluator (e.g. `evaluate.py`) or gold data, your patch must not touch it, weaken it, or add tests that assert against your own output instead of the gold. The orchestrator rejects any patch touching protected paths. Making a metric pass by editing what measures it is a failure, not a fix.
+- **Prefer data over code where the app supports it.** If the feature can be expressed as a declarative config entry (e.g. an adapter mapping the app already reads), return that as the patch rather than new Python. Only write code for genuinely new behavior (e.g. a new normalizer), and cover it with a test.
 - Do NOT include any prose outside the structured format.
 - EDGE_CASES must be valid JSON and target the genuinely interesting inputs for this
   feature — the cases that will produce signal (errors, boundaries) in future cycles.

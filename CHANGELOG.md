@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Reference engagement: partner-data onboarding (`engagements/madi_onboarding/`).** The same generic loop, pointed at a `POST /ingest` service that maps + normalizes partner records to a canonical company schema via declarative per-source adapters, benchmarked on MaDI-Bench's Companies task. Onboarding a new source is measured against **held-out gold labels** (schema-mapping F1, value accuracy, fully-correct rate) — metrics that returning HTTP 200 cannot move. Includes a checksum-pinned downloader (data is CC BY-NC-ND, never committed), synthetic fixtures for tests, and a CASE_STUDY documenting a real 0%→100% onboarding across two approved cycles with no regression on the already-onboarded source.
+- **Loop safety, generic to every engagement:** a second human gate (approve the exact tested patch after the app's `[app].evaluator` runs against held-out truth) and a deterministic protected-path allowlist (`scripts/check_protected_paths.py`) that rejects any implementer patch touching evaluators, gold, fixtures, or scoring — so the loop cannot improve its own metrics by editing what measures them.
+- `flywheel_config` gains `[app].evaluator` and `[protected].paths` (default empty, so the calculator is unaffected).
+
 ### Changed
 - **The loop can now drive more than one app.** `flywheel_config.py` selects its config via (in order) an explicit path, the `FLYWHEEL_CONFIG` environment variable, then the repo-root `flywheel.toml`. Sections absent from the built-in defaults (e.g. `[traffic]`) are preserved instead of being silently dropped, and path-valued keys (`app.usage_log`, `simulator.edge_cases`, `traffic.replay_file`) resolve against the config file's own directory so an engagement config refers to its own files. Non-path keys (`module`, `base_url`) are left untouched.
 - `analyze_usage.py`: use `int | float` in `isinstance` (ruff UP038) — clears a lint failure that was breaking CI.

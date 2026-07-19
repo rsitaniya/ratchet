@@ -117,6 +117,33 @@ Subagents run headlessly and *cannot* block for input. So the approval step has 
 in the orchestrating skill — a constraint of the execution model that the design takes
 seriously rather than working around.
 
+## Reference engagement: partner-data onboarding
+
+The calculator proves the loop closes. The **[MaDI onboarding engagement](engagements/madi_onboarding/)**
+proves it makes *good* decisions — because they're scored against held-out truth.
+
+The same generic loop is pointed (by config alone) at a `POST /ingest` service that
+maps and normalizes partner records into a canonical company schema via declarative
+per-source adapters. A new source arrives with renamed fields (`sales` where the
+target wants `revenue`), string years, `"$1.2B"` money, and country names. Every
+record fails; the loop reads the structured gaps, proposes one adapter change per
+cycle, and a **held-out evaluator it is forbidden to edit** scores the result
+against gold labels ([MaDI-Bench](https://github.com/wbsg-uni-mannheim/MaDI-Bench)).
+
+Real numbers from `evaluate.py`, onboarding a new source across two approved cycles:
+
+| `forbes` metric | Baseline | Cycle 1 | Cycle 2 |
+|---|---:|---:|---:|
+| schema-mapping F1 | 0.00 | 0.55 | 1.00 |
+| fully-correct rate | 0% | 0% | 100% |
+| regression on the onboarded source | — | none | none |
+
+Two things make this different from a code-only autonomous loop (OpenHands, Forge):
+it **starts from product signal**, not a task prompt; and its metrics **can't be
+gamed by returning 200** — a plausible-but-wrong mapping (`sales → assets`) is
+caught by the oracle, and a patch that tries to edit the evaluator is rejected
+before it applies. Full write-up: **[CASE_STUDY.md](engagements/madi_onboarding/CASE_STUDY.md)**.
+
 ## How it works
 
 The full mechanism, the subagent handoff contracts, and the design rationale are in
