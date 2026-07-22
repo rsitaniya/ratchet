@@ -52,6 +52,28 @@ def test_missing_rules_file_matches_nothing(tmp_path):
     assert M.match(_rows("left.jsonl"), _rows("right.jsonl"), rules) == []
 
 
+def test_missing_blocking_key_does_not_group_records():
+    # Two records that both lack the blocking key must not land in one block and
+    # false-match; identical-looking records with no country should not pair.
+    left = [{"record_id": "L", "name": "Acme", "city": "NY"}]
+    right = [{"record_id": "R", "name": "Acme", "city": "NY"}]
+    assert M.match(left, right, CONVERGED) == []  # CONVERGED blocks on country
+
+
+def test_absent_fields_do_not_manufacture_a_match():
+    # A pair that is empty on every compared field scores 0, not 1.0.
+    left = [{"record_id": "L", "country": "US"}]
+    right = [{"record_id": "R", "country": "US"}]
+    assert M.match(left, right, CONVERGED) == []
+
+
+def test_missing_record_id_is_rejected():
+    import pytest
+
+    with pytest.raises(ValueError, match="record_id"):
+        M.match([{"name": "Acme", "country": "US"}], [{"record_id": "R", "country": "US"}], CONVERGED)
+
+
 def test_score_pair_is_weighted_average():
     left = {"name": "Acme", "city": "NY"}
     right = {"name": "Acme", "city": "LA"}

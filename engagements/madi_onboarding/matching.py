@@ -48,14 +48,22 @@ def match(left: list[dict], right: list[dict], rules: dict) -> list[tuple[str, s
     A blocking key (optional) skips comparing records that disagree on it — the
     standard candidate-reduction step. Pairs scoring >= threshold are matches.
     """
+    for rec in (*left, *right):
+        if similarity.is_absent(rec.get("record_id")):
+            raise ValueError(f"record missing required 'record_id': {rec}")
     threshold = rules.get("threshold", 0.85)
     blocking = rules.get("blocking_key")
     compares = rules.get("compare", [])
     pairs: list[tuple[str, str]] = []
     for lrec in left:
         for rrec in right:
-            if blocking and lrec.get(blocking) != rrec.get(blocking):
-                continue
+            if blocking:
+                lb, rb = lrec.get(blocking), rrec.get(blocking)
+                # An absent blocking key is not a shared block: two records that
+                # both lack it must not be grouped together (that is how missing
+                # fields produced false matches).
+                if similarity.is_absent(lb) or similarity.is_absent(rb) or lb != rb:
+                    continue
             if score_pair(lrec, rrec, compares) >= threshold:
                 pairs.append((lrec["record_id"], rrec["record_id"]))
     return pairs

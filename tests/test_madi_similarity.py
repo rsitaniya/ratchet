@@ -18,8 +18,18 @@ def test_exact():
 def test_jaro_winkler_known_value():
     # Canonical reference pair from the Jaro-Winkler literature.
     assert S.jaro_winkler("MARTHA", "MARHTA") == pytest.approx(0.961, abs=0.002)
-    assert S.jaro_winkler("", "") == 1.0
     assert S.jaro_winkler("abc", "") == 0.0
+
+
+def test_absent_values_never_match():
+    # A missing field carries no evidence: it must score 0, not a false 1.0.
+    for fn in (S.exact, S.jaro_winkler, S.token_jaccard, S.numeric_close):
+        assert fn(None, None) == 0.0, fn
+        assert fn("x", None) == 0.0, fn
+        assert fn(None, "x") == 0.0, fn
+    assert S.exact("", "") == 0.0        # two empty strings do not match
+    assert S.jaro_winkler("  ", "  ") == 0.0
+    assert S.token_jaccard("", "") == 0.0
 
 
 def test_jaro_winkler_name_variants_are_high():
@@ -37,7 +47,6 @@ def test_jaro_winkler_distinct_names_are_low():
 def test_token_jaccard():
     assert S.token_jaccard("Nimbus Robotics", "Nimbus Robotics Inc") == pytest.approx(2 / 3, abs=0.01)
     assert S.token_jaccard("a b", "a b") == 1.0
-    assert S.token_jaccard("", "") == 1.0
 
 
 def test_numeric_close():

@@ -7,7 +7,18 @@ adding/weighting comparisons — not by writing code.
 from __future__ import annotations
 
 
+def is_absent(v) -> bool:
+    """A value carrying no evidence: None or an empty/whitespace string.
+
+    Two records that both *lack* a field must not be treated as matching on it,
+    so every similarity returns 0.0 when either side is absent.
+    """
+    return v is None or (isinstance(v, str) and not v.strip())
+
+
 def exact(a, b) -> float:
+    if is_absent(a) or is_absent(b):
+        return 0.0
     return 1.0 if a == b else 0.0
 
 
@@ -47,6 +58,8 @@ def _jaro(s1: str, s2: str) -> float:
 
 def jaro_winkler(a, b, prefix_weight: float = 0.1) -> float:
     """Jaro-Winkler similarity (case-insensitive), boosting a common prefix."""
+    if is_absent(a) or is_absent(b):
+        return 0.0
     s1, s2 = str(a).lower(), str(b).lower()
     jaro = _jaro(s1, s2)
     prefix = 0
@@ -62,6 +75,8 @@ def jaro_winkler(a, b, prefix_weight: float = 0.1) -> float:
 
 def token_jaccard(a, b) -> float:
     """Jaccard overlap of lowercased token sets."""
+    if is_absent(a) or is_absent(b):
+        return 0.0
     t1 = set(str(a).lower().split())
     t2 = set(str(b).lower().split())
     if not t1 and not t2:
@@ -72,6 +87,8 @@ def token_jaccard(a, b) -> float:
 
 def numeric_close(a, b, rel_tol: float = 0.05) -> float:
     """1.0 if two numbers are within `rel_tol` relative tolerance, else 0.0."""
+    if is_absent(a) or is_absent(b):
+        return 0.0
     try:
         x, y = float(a), float(b)
     except (TypeError, ValueError):
