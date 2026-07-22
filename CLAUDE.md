@@ -65,3 +65,13 @@ Code and docs read like an engineer wrote them, not like an LLM wrote marketing 
 
 - **Code:** minimal comments — only load-bearing "why" (a constraint the code can't show). No speculative abstractions, no dead code, match the existing pattern.
 - **Docs:** no emoji in diagrams or headers, no rhetorical/marketing section titles, no bold-spray, no essayist asides. Keep the substance and the honest numbers; cut the flourish.
+
+## Engineering discipline (hard-won)
+
+A green test suite proves the happy path, nothing more. Enforce these or the loop's safety claims are theatre.
+
+- **Security boundaries are validated adversarially.** Never parse a tool's text output to make a security decision — derive facts from the tool itself (`git apply --numstat -z`, not diff-text parsing). A guard is only as strong as the attacks you tried against it; try the quoted path, the rename, the deletion, the config edit.
+- **Boundaries are mechanism, not etiquette.** "Read-only" means the tool grant is Read/Grep/Glob (no Bash). "Held-out" gold means the agent cannot read it, not just cannot write it. Fail closed: if the guard cannot determine what a patch touches, reject it.
+- **Wire and run end-to-end before claiming it works.** Grep for every component the docs reference and confirm something selects it. Don't build an artifact and its harness in parallel and assume they connect.
+- **Prose never outruns code.** Re-verify factual claims (test counts, capability lists, gate counts) against reality on every doc change.
+- **State the threat model.** This repo is a local, single-operator benchmark harness, not a hardened multi-tenant service. Say so where the claims live, so scope is explicit.

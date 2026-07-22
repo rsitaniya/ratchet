@@ -1,4 +1,6 @@
 """Tests for the protected-path enforcement the orchestrator runs before apply."""
+import subprocess
+
 import check_protected_paths as C
 
 ENGAGEMENT_GLOBS = ["**/evaluate.py", "**/adapters.py", "**/fixtures/**", "**/gold_*.json", "**/*_gold.json"]
@@ -72,3 +74,83 @@ def test_normalizers_and_adapter_data_stay_writable():
 def test_no_globs_means_nothing_protected():
     # The calculator declares no protected paths → nothing is blocked.
     assert C.protected_hits(C.changed_paths(_diff(EVALUATOR)), []) == []
+
+
+# --- Git-native path detection (the real security boundary) ---
+
+
+def test_parse_numstat_z_normal_and_rename():
+    # Layout confirmed empirically: normal = "a\tr\tpath\0"; rename = "a\tr\t\0old\0new\0".
+    assert C._parse_numstat_z(b"1\t0\tevaluate.py\0") == ["evaluate.py"]
+    assert C._parse_numstat_z(b"0\t0\t\0a.txt\0b.txt\0") == ["a.txt", "b.txt"]
+
+
+def test_quoted_path_bypass_is_caught(tmp_path):
+    # The review's exploit: an octal-escaped path defeats a naive text parser,
+    # but `git apply` unquotes it to the real file. paths_touched must see it.
+    patch = tmp_path / "evil.patch"
+    patch.write_text(
+        'diff --git "a/\\145valuate.py" "b/\\145valuate.py"\n'
+        '--- "a/\\145valuate.py"\n'
+        '+++ "b/\\145valuate.py"\n'
+        "@@ -0,0 +1 @@\n+x\n"
+    )
+    # git-native detection resolves the real target from the escaped path.
+    assert C.paths_touched(patch) == ["evaluate.py"]
+    assert C.protected_hits(sorted(C.all_touched_paths(patch)), ENGAGEMENT_GLOBS)
+
+
+def test_quoted_evaluator_edit_rejected_end_to_end(tmp_path, monkeypatch):
+    monkeypatch.setattr(C, "get_value", lambda key: ENGAGEMENT_GLOBS if key == "protected.paths" else None)
+    patch = tmp_path / "evil.patch"
+    patch.write_text(
+        'diff --git "a/\\145valuate.py" "b/\\145valuate.py"\n'
+        '--- "a/\\145valuate.py"\n'
+        '+++ "b/\\145valuate.py"\n'
+        "@@ -0,0 +1 @@\n+x\n"
+    )
+    assert C.main([str(patch)]) == 2
+
+
+def test_unparseable_patch_fails_closed(tmp_path, monkeypatch):
+    monkeypatch.setattr(C, "get_value", lambda key: ENGAGEMENT_GLOBS if key == "protected.paths" else None)
+    patch = tmp_path / "garbage.patch"
+    patch.write_text("this is not a diff at all\n")
+    assert C.main([str(patch)]) == 2  # cannot prove safe → reject
+
+
+def test_union_catches_rename_of_evaluator(tmp_path, monkeypatch):
+    # numstat reports only the rename destination; the union must still catch the
+    # protected source. This is a real git-generated rename patch.
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    (repo / "evaluate.py").write_text("gold_scoring = 1\n")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"], cwd=repo, check=True)
+    subprocess.run(["git", "mv", "evaluate.py", "eval_moved.py"], cwd=repo, check=True)
+    diff = subprocess.run(["git", "diff", "--cached"], cwd=repo, capture_output=True, text=True).stdout
+    patch = repo / "r.patch"
+    patch.write_text(diff)
+    subprocess.run(["git", "reset", "-q"], cwd=repo, check=True)
+    monkeypatch.chdir(repo)
+    assert "evaluate.py" in C.all_touched_paths(patch)
+    assert C.protected_hits(sorted(C.all_touched_paths(patch)), ENGAGEMENT_GLOBS)
+
+
+def test_git_unquote_matches_real_git(tmp_path):
+    # Verify _git_unquote reproduces exactly what git wrote, for a non-ASCII path
+    # git chose to quote (following the rule: check against the tool, not memory).
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    name = "évalué.py"
+    (repo / name).write_text("x\n")
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    header = subprocess.run(
+        ["git", "diff", "--cached"], cwd=repo, capture_output=True, text=True
+    ).stdout.splitlines()[0]
+    # header like: diff --git "a/\303\251valu\303\251.py" "b/\303\251valu\303\251.py"
+    assert '"' in header  # git did quote it
+    token = header[len("diff --git "):].split(" ", 1)[0]
+    assert C._git_unquote(token) == f"a/{name}"
