@@ -191,6 +191,12 @@ ruff check .
 CI runs lint + tests on Python 3.11/3.12/3.13, and separately boots the API and runs
 the simulator against it to prove loop closure hasn't broken.
 
+## Security model
+
+dev-flywheel is a local, single-operator benchmark harness, not a hardened service.
+The loop's oracle-safety guarantees, the robustness hardening, and the honest residual
+limitations are documented in **[SECURITY.md](SECURITY.md)**.
+
 ## License
 
 Apache-2.0 — see [LICENSE](LICENSE).

@@ -6,7 +6,6 @@ venv/
 *.zip
 .DS_Store
 *.egg-info/
-uv.lock
 # IDE
 .idea/
 .vscode/
