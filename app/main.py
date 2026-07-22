@@ -1,10 +1,12 @@
 import json
 import math
 import os
+import sys
 import time
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse
@@ -101,13 +103,10 @@ class BatchResultItem(BaseModel):
     error_type: str | None = Field(None, description="Machine-readable error classification; null on success")
 
 
-@app.middleware("http")
-async def usage_logger(request: Request, call_next):
-    start_ns = time.perf_counter_ns()
-    response = await call_next(request)
-    latency_ms = round((time.perf_counter_ns() - start_ns) / 1_000_000, 2)
-
-    if request.url.path not in SKIP_USAGE_PATHS:
+def _record_usage(request: Request, status_code: int, latency_ms: float, error_type: str | None) -> None:
+    """Append one usage record. Fail-open: a logging failure must never turn a
+    served request into an error, so any exception here is swallowed to stderr."""
+    try:
         params = request.query_params
         record = {
             "timestamp": datetime.now(UTC).isoformat(),
@@ -115,16 +114,37 @@ async def usage_logger(request: Request, call_next):
             "method": request.method,
             "operation": params.get("op"),
             "inputs": dict(params),
-            "status_code": response.status_code,
+            "status_code": status_code,
             "latency_ms": latency_ms,
-            "error_type": getattr(request.state, "error_type", None),
+            "error_type": error_type,
             "source": request.headers.get("x-usage-source", "unknown"),
             "run_id": request.headers.get("x-run-id"),
         }
         with USAGE_LOG.open("a") as f:
             f.write(json.dumps(record) + "\n")
+    except Exception as e:  # noqa: BLE001 — telemetry is best-effort, never fatal
+        print(f"[usage-log] failed to record {request.url.path}: {e}", file=sys.stderr)
 
-    return response
+
+@app.middleware("http")
+async def usage_logger(request: Request, call_next):
+    start_ns = time.perf_counter_ns()
+    status_code = 500
+    error_type = None
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        return response
+    except Exception as exc:
+        # An unhandled handler exception still becomes signal (a 500 with the
+        # exception name), instead of vanishing from the log entirely.
+        error_type = type(exc).__name__
+        raise
+    finally:
+        if request.url.path not in SKIP_USAGE_PATHS:
+            latency_ms = round((time.perf_counter_ns() - start_ns) / 1_000_000, 2)
+            resolved_error = getattr(request.state, "error_type", None) or error_type
+            _record_usage(request, status_code, latency_ms, resolved_error)
 
 
 @app.get(
@@ -240,7 +260,9 @@ has the same length as the request.
 - `abs` — absolute difference; returns `|a - b|`
 """,
 )
-async def calculate_batch(body: list[BatchItem]) -> list[BatchResultItem]:
+async def calculate_batch(
+    body: Annotated[list[BatchItem], Field(max_length=1000)],
+) -> list[BatchResultItem]:
     results: list[BatchResultItem] = []
     for item in body:
         op, a, b = item.op, item.a, item.b

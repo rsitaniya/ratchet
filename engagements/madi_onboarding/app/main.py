@@ -17,6 +17,7 @@ and error codes plus a HASHED record id — never raw customer values.
 import hashlib
 import json
 import os
+import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -49,9 +50,16 @@ app = FastAPI(
 )
 
 
+# A source system names an adapter file; constrain it at the API boundary so an
+# unsafe value is a 422, never a path-traversal attempt. Reconcile inputs are
+# bounded because matching is O(len(left) * len(right)).
+SOURCE_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
+MAX_RECORDS = 5000
+
+
 class IngestRequest(BaseModel):
-    source_system: str = Field(..., description="Which partner system the record came from")
-    schema_version: str = Field("v1", description="Partner schema version")
+    source_system: str = Field(..., pattern=SOURCE_PATTERN, description="Which partner system the record came from")
+    schema_version: str = Field("v1", max_length=32, description="Partner schema version")
     record: dict = Field(..., description="One raw partner record (may include a 'record_id')")
 
 
@@ -60,27 +68,41 @@ def _hash_id(record_id) -> str:
 
 
 def _emit(events: list[dict]) -> None:
-    with USAGE_LOG.open("a") as f:
-        for e in events:
-            f.write(json.dumps(e) + "\n")
+    """Append telemetry events. Fail-open: a logging failure must never break a
+    served request, so any write error is swallowed to stderr."""
+    try:
+        with USAGE_LOG.open("a") as f:
+            for e in events:
+                f.write(json.dumps(e) + "\n")
+    except Exception as e:  # noqa: BLE001 — telemetry is best-effort, never fatal
+        print(f"[usage-log] failed to record {len(events)} event(s): {e}", file=sys.stderr)
 
 
 @app.middleware("http")
 async def usage_logger(request: Request, call_next):
     start = time.perf_counter_ns()
-    response = await call_next(request)
-    if request.url.path not in SKIP_USAGE_PATHS:
-        _emit([{
-            "timestamp": datetime.now(UTC).isoformat(),
-            "event": "http",
-            "path": request.url.path,
-            "method": request.method,
-            "status_code": response.status_code,
-            "latency_ms": round((time.perf_counter_ns() - start) / 1_000_000, 2),
-            "source": request.headers.get("x-usage-source", "unknown"),
-            "run_id": request.headers.get("x-run-id"),
-        }])
-    return response
+    status_code = 500
+    error_type = None
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        return response
+    except Exception as exc:
+        error_type = type(exc).__name__  # an unhandled crash still becomes signal
+        raise
+    finally:
+        if request.url.path not in SKIP_USAGE_PATHS:
+            _emit([{
+                "timestamp": datetime.now(UTC).isoformat(),
+                "event": "http",
+                "path": request.url.path,
+                "method": request.method,
+                "status_code": status_code,
+                "error_type": error_type,
+                "latency_ms": round((time.perf_counter_ns() - start) / 1_000_000, 2),
+                "source": request.headers.get("x-usage-source", "unknown"),
+                "run_id": request.headers.get("x-run-id"),
+            }])
 
 
 @app.post("/ingest", summary="Ingest one partner record")
@@ -117,10 +139,10 @@ async def ingest(req: IngestRequest, request: Request):
 
 
 class ReconcileRequest(BaseModel):
-    left_source: str = Field(..., description="Source system name for the left record set")
-    right_source: str = Field(..., description="Source system name for the right record set")
-    left: list[dict] = Field(..., description="Schema-mapped records from the left source")
-    right: list[dict] = Field(..., description="Schema-mapped records from the right source")
+    left_source: str = Field(..., pattern=SOURCE_PATTERN, description="Source system name for the left record set")
+    right_source: str = Field(..., pattern=SOURCE_PATTERN, description="Source system name for the right record set")
+    left: list[dict] = Field(..., max_length=MAX_RECORDS, description="Schema-mapped records from the left source")
+    right: list[dict] = Field(..., max_length=MAX_RECORDS, description="Schema-mapped records from the right source")
 
 
 @app.post("/reconcile", summary="Match + fuse records across two sources")

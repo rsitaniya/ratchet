@@ -58,3 +58,14 @@ def test_run_id_absent_is_null():
     recs = [r for r in _records() if r.get("path") == "/calculate"]
     assert "run_id" in recs[-1], "run_id field must always be present"
     assert recs[-1]["run_id"] is None, "run_id defaults to null when the header is absent"
+
+
+def test_logging_failure_does_not_break_the_request(tmp_path, monkeypatch):
+    # If the usage log cannot be written (here: the path is a directory), the
+    # served request must still succeed — telemetry is fail-open, not fatal.
+    a_dir = tmp_path / "not-a-file"
+    a_dir.mkdir()
+    monkeypatch.setattr(m, "USAGE_LOG", a_dir)
+    r = client.get("/calculate", params={"op": "add", "a": 1, "b": 2})
+    assert r.status_code == 200
+    assert r.json()["result"] == 3.0

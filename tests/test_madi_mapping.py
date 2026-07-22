@@ -14,6 +14,19 @@ def _schema():
     return json.loads((FIX / "target_schema.json").read_text())
 
 
+@pytest.mark.parametrize("bad", ["../../etc/passwd", "a/b", "..", "with space", "dot.name", ""])
+def test_load_adapter_rejects_unsafe_source_names(bad):
+    # source_system becomes a filename; a traversal or odd name must not read
+    # outside the adapters dir.
+    with pytest.raises(ValueError, match="invalid source|escapes"):
+        A.load_adapter(bad, ADAPTERS)
+
+
+def test_load_adapter_accepts_normal_names():
+    # A not-yet-onboarded but well-named source is the supported empty state.
+    assert A.load_adapter("brand_new-source", ADAPTERS) == {"source": "brand_new-source", "fields": {}}
+
+
 def _rows(name):
     return [json.loads(ln) for ln in (FIX / "sources" / name).read_text().splitlines() if ln.strip()]
 

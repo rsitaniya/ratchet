@@ -7,6 +7,7 @@ be unit-tested without a server; the ingest app is a thin wrapper over it.
 """
 from __future__ import annotations
 
+import re
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,10 @@ from typing import Any
 from . import normalizers
 
 ADAPTERS_DIR = Path(__file__).resolve().parent / "adapters"
+
+# A source system names a file under adapters/. Restrict it to a safe token so a
+# caller-supplied value cannot traverse the filesystem (e.g. "../../etc/passwd").
+SAFE_SOURCE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
 def load_adapter(source: str, adapters_dir: Path | None = None) -> dict[str, Any]:
@@ -23,9 +28,15 @@ def load_adapter(source: str, adapters_dir: Path | None = None) -> dict[str, Any
     returns an empty field map, so every field is unmapped and every required
     target attribute is missing — which is exactly the signal the loop acts on.
     Referencing an unknown normalizer is an authoring error and raises loudly.
+    An unsafe source name is rejected before it can become a path.
     """
     adapters_dir = adapters_dir or ADAPTERS_DIR
+    if not isinstance(source, str) or not SAFE_SOURCE.match(source):
+        raise ValueError(f"invalid source system name: {source!r}")
     path = adapters_dir / f"{source}.toml"
+    # Defense in depth: the resolved path must stay under adapters_dir.
+    if adapters_dir.resolve() not in path.resolve().parents:
+        raise ValueError(f"adapter path escapes adapters dir: {source!r}")
     if not path.exists():
         return {"source": source, "fields": {}}
     data = tomllib.loads(path.read_text())

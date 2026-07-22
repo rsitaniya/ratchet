@@ -39,7 +39,7 @@ import random
 import re
 import sys
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 from uuid import uuid4
 
 import httpx
@@ -74,8 +74,22 @@ def load_replay_specs(path: str) -> list[dict]:
     return [json.loads(ln) for ln in lines]
 
 
+def safe_url(base_url: str, path: str) -> str:
+    """Join `path` onto `base_url`, refusing anything that changes the origin.
+
+    urljoin with a schema- or caller-controlled path can silently switch host
+    (e.g. `//evil/collect` or an absolute URL), so verify the result stays on
+    base_url's scheme+host before any request is sent.
+    """
+    joined = urljoin(base_url, path)
+    b, j = urlsplit(base_url), urlsplit(joined)
+    if (j.scheme, j.netloc) != (b.scheme, b.netloc):
+        raise ValueError(f"refusing {path!r}: it leaves origin {b.scheme}://{b.netloc}")
+    return joined
+
+
 def fetch_schema(base_url: str) -> dict:
-    r = httpx.get(urljoin(base_url, "/openapi.json"), timeout=10)
+    r = httpx.get(safe_url(base_url, "/openapi.json"), timeout=10)
     r.raise_for_status()
     return r.json()
 
@@ -236,7 +250,8 @@ def fire(base_url: str, method: str, path: str, params, body, label: str, idx: i
     stats.setdefault(label, {"total": 0, "errors": 0})
     headers = {"X-Usage-Source": "simulator", "X-Run-Id": run_id}
     try:
-        r = httpx.request(method, urljoin(base_url, path), params=params or None, json=body, headers=headers, timeout=5)
+        url = safe_url(base_url, path)
+        r = httpx.request(method, url, params=params or None, json=body, headers=headers, timeout=5)
         status = r.status_code
         stats[label]["total"] += 1
         if status >= 400:

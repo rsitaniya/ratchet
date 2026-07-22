@@ -50,6 +50,16 @@ def test_load_replay_specs_parses_and_skips_blanks(tmp_path):
     assert [s["path"] for s in specs] == ["/requests/mortgage", "/requests/unknown"]
 
 
+def test_safe_url_allows_same_origin_and_blocks_escape():
+    import pytest
+
+    base = "http://localhost:8000"
+    assert simulate.safe_url(base, "/calculate") == "http://localhost:8000/calculate"
+    for evil in ("//attacker.invalid/collect", "http://attacker.invalid/x", "https://localhost:8000/x"):
+        with pytest.raises(ValueError, match="leaves origin"):
+            simulate.safe_url(base, evil)
+
+
 def test_effective_parameters_merges_path_level_and_resolves_ref():
     root = {"components": {"parameters": {"Item": {"name": "item_id", "in": "path", "schema": {"type": "integer"}}}}}
     path_item = {"parameters": [{"$ref": "#/components/parameters/Item"}]}

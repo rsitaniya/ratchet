@@ -9,6 +9,12 @@ def post_batch(items):
     return client.post("/calculate/batch", json=items)
 
 
+def test_oversized_batch_is_rejected():
+    # An unbounded batch is a resource-exhaustion vector; the cap returns 422.
+    r = post_batch([{"op": "add", "a": 1, "b": 2}] * 1001)
+    assert r.status_code == 422
+
+
 def test_basic_add():
     r = post_batch([{"op": "add", "a": 3, "b": 4}])
     assert r.status_code == 200

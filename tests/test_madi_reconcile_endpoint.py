@@ -32,6 +32,22 @@ def _post(client):
     }, headers={"X-Run-Id": "rec-1"})
 
 
+def test_bad_source_name_is_rejected_at_boundary(client):
+    # An unsafe source name must be a 422 at the API boundary, not a path traversal.
+    r = client.post("/reconcile", json={
+        "left_source": "../../etc/passwd", "right_source": "vendor_erp", "left": [], "right": [],
+    })
+    assert r.status_code == 422
+
+
+def test_oversized_reconcile_input_is_rejected(client):
+    big = [{"record_id": f"L{i}", "country": "US"} for i in range(5001)]
+    r = client.post("/reconcile", json={
+        "left_source": "acme_crm", "right_source": "vendor_erp", "left": big, "right": [],
+    })
+    assert r.status_code == 422
+
+
 def test_seed_rules_match_nothing_all_unmatched(client):
     # Committed matching_rules.toml is the weak seed (exact name) → 0 matches.
     body = _post(client).json()
