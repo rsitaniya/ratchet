@@ -153,7 +153,7 @@ The full mechanism, the subagent handoff contracts, and the design rationale are
 | Component | Role |
 |---|---|
 | `app/main.py` | Example FastAPI app + the ~20-line usage middleware that records everything |
-| `scripts/simulate.py` | Walks `/openapi.json`; synthesizes requests from JSON Schema (`$ref`, `enum`, `anyOf`, nested objects) |
+| `scripts/simulate.py` | Walks `/openapi.json`; synthesizes requests from JSON Schema — path & query params (incl. `$ref` and path-level), `enum`, `anyOf`/`oneOf`, merged `allOf`, arrays, nested objects, JSON bodies |
 | `scripts/analyze_usage.py` | Raw log → signal report (volume, error rates, 404 demand, input distribution) |
 | `.claude/agents/` | Read-only planner subagents with strict output contracts |
 | `.claude/skills/dev-loop` | The 9-step orchestrator — and the sole writer |

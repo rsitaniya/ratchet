@@ -2,10 +2,12 @@
 """
 Schema-driven, multi-endpoint API simulator — with an optional replay mode.
 
-Default (schema) mode: fetches /openapi.json and exercises EVERY operation it
-finds — each path + method — by synthesizing requests from the parameter and
-request-body schemas. It is generic by construction: a new endpoint is exercised
-automatically with no hand-editing, as long as it is described in /openapi.json.
+Default (schema) mode: fetches /openapi.json and exercises every operation it
+finds — each path + method — by synthesizing requests from the parameter schemas
+(path- and operation-level, `$ref` resolved) and application/json request bodies.
+It is generic by construction: a new endpoint is exercised automatically with no
+hand-editing, as long as it is described in /openapi.json. Non-JSON request media
+types are not synthesized.
 
 Replay mode (`--replay FILE`, or `[traffic].replay_file` in flywheel.toml): fires
 a fixed list of recorded request specs instead of synthesizing them, so a run is
@@ -34,6 +36,7 @@ Defaults come from flywheel.toml ([app].base_url, [simulator].default_requests,
 import argparse
 import json
 import random
+import re
 import sys
 from pathlib import Path
 from urllib.parse import urljoin
@@ -102,12 +105,20 @@ def gen_value(schema: dict, root: dict):
     if not isinstance(schema, dict):
         return None
 
-    # Composition keywords: pick a branch (allOf → merge-ish, take first)
+    # Composition keywords. anyOf/oneOf: satisfy one branch. allOf: satisfy ALL
+    # branches — merge their properties/required so no branch is dropped (a
+    # first-branch-only shortcut omits required fields from the others).
     for key in ("anyOf", "oneOf"):
         if key in schema and schema[key]:
             return gen_value(random.choice(schema[key]), root)
     if "allOf" in schema and schema["allOf"]:
-        return gen_value(schema["allOf"][0], root)
+        merged: dict = {"type": "object", "properties": {}, "required": []}
+        for sub in schema["allOf"]:
+            sub = resolve_ref(sub, root)
+            if isinstance(sub, dict):
+                merged["properties"].update(sub.get("properties", {}))
+                merged["required"] += sub.get("required", [])
+        return gen_value(merged, root)
 
     if "enum" in schema:
         return random.choice(schema["enum"])
@@ -128,15 +139,44 @@ def gen_value(schema: dict, root: dict):
     return None
 
 
-def has_inputs(op_spec: dict) -> bool:
+def _resolve_param(p: dict, root: dict) -> dict:
+    """Resolve a parameter that is itself a $ref into components/parameters."""
+    if isinstance(p, dict) and "$ref" in p:
+        name = p["$ref"].split("/")[-1]
+        return root.get("components", {}).get("parameters", {}).get(name, {})
+    return p
+
+
+def effective_parameters(op_spec: dict, path_item: dict, root: dict) -> list[dict]:
+    """Parameters that actually apply to an operation.
+
+    Per OpenAPI, parameters declared at the path-item level apply to every
+    operation under that path; an operation's own parameters override them by
+    (name, location). $ref parameters are resolved. Skipping path-level params
+    is why templated paths like /items/{item_id} were left unsubstituted.
+    """
+    merged: dict[tuple, dict] = {}
+    for p in list(path_item.get("parameters", [])) + list(op_spec.get("parameters", [])):
+        p = _resolve_param(p, root)
+        if isinstance(p, dict) and "name" in p and "in" in p:
+            merged[(p["name"], p["in"])] = p
+    return list(merged.values())
+
+
+def has_inputs(op_spec: dict, params: list[dict]) -> bool:
     """True if the operation takes any params or a request body (worth firing repeatedly)."""
-    return bool(op_spec.get("parameters")) or bool(op_spec.get("requestBody"))
+    return bool(params) or bool(op_spec.get("requestBody"))
 
 
-def build_request(path: str, op_spec: dict, root: dict):
-    """Return (filled_path, query_params, json_body) synthesized from the schema."""
+def build_request(path: str, op_spec: dict, params: list[dict], root: dict):
+    """Return (filled_path, query_params, json_body) synthesized from the schema.
+
+    `params` is the already-merged effective parameter list (path-level +
+    operation-level, $refs resolved). Only application/json request bodies are
+    synthesized; other media types are not.
+    """
     path_params, query_params = {}, {}
-    for p in op_spec.get("parameters", []):
+    for p in params:
         val = gen_value(p.get("schema", {}), root)
         if p.get("in") == "path":
             path_params[p["name"]] = val
@@ -158,26 +198,34 @@ def build_request(path: str, op_spec: dict, root: dict):
 
     filled = path
     for name, val in path_params.items():
-        filled = filled.replace("{" + name + "}", str(val))
+        filled = filled.replace("{" + name + "}", str(val) if val is not None else "1")
+    # Fill any remaining template var (undeclared path param) so we never request
+    # a literal "{id}", which would always 404 and pollute the demand signal.
+    filled = re.sub(r"\{[^}]+\}", "1", filled)
     return filled, query_params, json_body
 
 
 def discover(schema: dict):
-    """Return list of (path, method, spec) for every real operation in the schema."""
+    """Return (path, method, spec, params) for every real operation in the schema.
+
+    `params` is the effective parameter list (path-level merged in, $refs
+    resolved), computed once here so every consumer sees the same view.
+    """
     operations = []
     for path, item in schema.get("paths", {}).items():
         if path in SKIP_PATHS:
             continue
         for method, spec in item.items():
             if method.lower() in ("get", "post", "put", "patch", "delete"):
-                operations.append((path, method.lower(), spec))
+                params = effective_parameters(spec, item, schema)
+                operations.append((path, method.lower(), spec, params))
     return operations
 
 
 def print_enum_params(operations, root):
     """Surface enum-valued params (e.g. op) so loop-closure on new ops is visible."""
-    for path, method, spec in operations:
-        for p in spec.get("parameters", []):
+    for path, method, _spec, params in operations:
+        for p in params:
             ps = resolve_ref(p.get("schema", {}), root)
             if isinstance(ps, dict) and "enum" in ps:
                 print(f"    {method.upper()} {path}  {p['name']} ∈ {ps['enum']}")
@@ -231,21 +279,21 @@ def run_schema(base_url: str, n_requests: int, run_id: str) -> dict:
     if not operations:
         raise RuntimeError("No operations found in /openapi.json — nothing to exercise.")
 
-    labels = [f"{m.upper()} {p}" for p, m, _ in operations]
+    labels = [f"{m.upper()} {p}" for p, m, _, _ in operations]
     print(f"Discovered {len(operations)} operations: {labels}")
     print_enum_params(operations, schema)
 
     # Coverage pass (hit each op once) + weighted remainder toward ops with inputs.
-    pool = [o for o in operations if has_inputs(o[2])] or operations
+    pool = [o for o in operations if has_inputs(o[2], o[3])] or operations
     sequence = list(operations) + [random.choice(pool) for _ in range(max(0, n_requests - len(operations)))]
     sequence = sequence[:n_requests]
     random.shuffle(sequence)
 
     print(f"Firing {len(sequence)} requests  (run_id={run_id})\n")
     stats: dict[str, dict] = {}
-    for i, (path, method, spec) in enumerate(sequence):
+    for i, (path, method, spec, params) in enumerate(sequence):
         label = f"{method.upper()} {path}"
-        filled, qp, body = build_request(path, spec, schema)
+        filled, qp, body = build_request(path, spec, params, schema)
         fire(base_url, method, filled, qp, body, label, i, stats, run_id)
     return stats
 
