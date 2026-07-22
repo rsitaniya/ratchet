@@ -53,14 +53,14 @@ claude   # opens Claude Code in the project directory
 ```
 
 The loop will:
-1. Simulate API traffic → populates `usage_log.jsonl`
-2. Invoke the feature-suggester → returns 2-3 proposals grounded in the data
-3. **Stop and ask you to pick a feature** ← only blocking step
-4. Invoke the implementer → returns a standard unified diff + metadata
-5. Orchestrator validates/applies the diff with `git apply --check` + `git apply`, runs `pytest`, confirms tests pass
-6. Restart server to reload new routes
-7. Invoke docs-updater → ensures new route has complete OpenAPI metadata
-8. Re-run simulator to confirm new endpoint appears in schema and is exercised
+1. Refuse to start if the working tree is dirty (so a Gate-2 revert never destroys unrelated work)
+2. Simulate API traffic → populates `usage_log.jsonl`; the orchestrator runs the analyzer
+3. Invoke the feature-suggester → returns 2-3 proposals grounded in the data
+4. **Stop and ask you to pick a feature (Gate 1)** ← first blocking step
+5. Invoke the implementer → returns a unified diff + metadata; the orchestrator runs the protected-path guard, then `git apply --check` + `git apply`, then `pytest`
+6. Invoke docs-updater → returns an OpenAPI-metadata diff, applied under the same guard
+7. Run the app's evaluator (if any) and **show you the exact tested patch to keep or revert (Gate 2)** ← second blocking step
+8. Restart server to reload new routes; re-run the simulator to confirm the new endpoint appears and is exercised
 
 ---
 
@@ -121,7 +121,7 @@ This is the only `AskUserQuestion` call in the entire system.
 Everything before and after it chains automatically.
 
 This placement is deliberate: subagents in Claude Code cannot block for
-user input (they run headlessly). The approval gate must be in the parent
+user input (they run headlessly). Both blocking gates must be in the parent
 skill where the interactive session lives.
 
 ---
@@ -299,12 +299,12 @@ Claude Code's built-in `/loop` runner:
 /loop /dev-loop
 ```
 
-That single command keeps launching cycles until you stop it. The `AskUserQuestion`
-approval gate (STEP 3) is the **only** blocking step. Every other step — simulate,
-suggest, implement, test, restart, docs, verify — chains automatically inside each
-cycle. To exit the loop:
+That single command keeps launching cycles until you stop it. The two `AskUserQuestion`
+gates — STEP 3 (approve the proposal) and STEP 6 (approve the tested patch) — are the
+blocking steps. Every other step chains automatically inside each cycle. To exit the loop:
 
-- Choose **"Skip this cycle"** at the STEP 3 approval gate (graceful), or
+- Choose **"Skip this cycle"** at the STEP 3 gate (graceful), or
+- Choose **Revert** at the STEP 6 gate, or
 - Press **Ctrl+C** at any time.
 
 ---

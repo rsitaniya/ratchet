@@ -125,7 +125,7 @@ What I think does generalise is the shape:
 
 - Telemetry that records failure and absence, not just success.
 - Agents constrained to propose, with a deterministic component doing every mutation.
-- One human gate, placed where the execution model actually allows it.
+- Human approval gates, placed where the execution model actually allows them (in the orchestrator, not the headless subagents).
 - Machinery that adapts through a schema rather than a hardcoded list, so the loop closes without a human turning the crank.
 
 None of that is model-specific, and none of it gets obsolete when the next model lands.

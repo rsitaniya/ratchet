@@ -12,10 +12,11 @@ aware of what the last one shipped.
 
 dev-flywheel closes that loop. Every request the API serves becomes a line of
 telemetry. An analyzer turns that telemetry into a signal report. An agent proposes
-features grounded in that signal, citing the numbers; a human approves one; a read-only
-subagent returns a unified diff that the orchestrator validates and applies; tests gate
-the merge. The simulator then re-reads `/openapi.json`, discovers the new endpoint, and
-generates traffic against it — which becomes the next cycle's signal.
+features grounded in that signal, citing the numbers; a human approves the proposal
+(gate 1); a read-only subagent returns a unified diff that the orchestrator validates,
+applies, and tests; a human approves the exact tested patch (gate 2) before it is kept.
+The simulator then re-reads `/openapi.json`, discovers the new endpoint, and generates
+traffic against it — which becomes the next cycle's signal.
 
 The calculator in `app/` is deliberately trivial; the loop is the product.
 
@@ -29,14 +30,15 @@ flowchart TD
     LOG[("<b>usage_log.jsonl</b><br/><i>append-only telemetry</i>")]
     AN["<b>analyze</b><br/><i>volume · error rates · 404 demand</i>"]
     SUG["<b>feature-suggester</b><br/><i>read-only · must cite the numbers</i>"]
-    HUM{{"<b>human approves</b><br/><i>the only blocking step</i>"}}
+    HUM{{"<b>human approves</b><br/><i>gate 1 · approve the proposal</i>"}}
     IMP["<b>implementer</b><br/><i>read-only · returns a unified diff</i>"]
     GA["<b>git apply --check</b><br/><i>orchestrator validates, then writes</i>"]
     TEST["<b>pytest</b><br/><i>gates the cycle</i>"]
     DOC["<b>docs-updater</b><br/><i>read-only · OpenAPI metadata</i>"]
+    HUM2{{"<b>human approves</b><br/><i>gate 2 · approve the tested patch</i>"}}
     API["<b>new endpoint live</b><br/><i>appears in /openapi.json</i>"]
 
-    SIM --> LOG --> AN --> SUG --> HUM --> IMP --> GA --> TEST --> DOC --> API
+    SIM --> LOG --> AN --> SUG --> HUM --> IMP --> GA --> TEST --> DOC --> HUM2 --> API
     API -.->|"re-fetches the schema and exercises<br/>the new endpoint automatically"| SIM
 
     style SIM fill:#f1f5f9,stroke:#475569,color:#000
@@ -48,6 +50,7 @@ flowchart TD
     style DOC fill:#ddd6fe,stroke:#7e22ce,stroke-width:2px,color:#000
     style GA fill:#fee2e2,stroke:#b91c1c,stroke-width:2px,color:#000
     style HUM fill:#fde68a,stroke:#b45309,stroke-width:3px,color:#000
+    style HUM2 fill:#fde68a,stroke:#b45309,stroke-width:3px,color:#000
     style API fill:#bbf7d0,stroke:#15803d,stroke-width:3px,color:#000
 ```
 
@@ -109,9 +112,10 @@ before touching the tree. No agent can half-write a file, every handoff is audit
 and a malformed patch fails loudly instead of corrupting the repo — the multi-agent
 write-safety problem solved with `git` instead of a framework.
 
-**The human gate lives in the parent, not the subagent.** Subagents run headlessly and
-cannot block for input, so the approval step sits in the orchestrating skill — a
-constraint of the execution model the design follows rather than works around.
+**The human gates live in the parent, not the subagent.** Subagents run headlessly and
+cannot block for input, so both approval gates (approve the proposal, then approve the
+exact tested patch) sit in the orchestrating skill — a constraint of the execution
+model the design follows rather than works around.
 
 ## Reference engagement: partner-data onboarding
 
@@ -180,7 +184,7 @@ Full guide: **[docs/ADAPTING.md](docs/ADAPTING.md)**.
 ## Tests
 
 ```bash
-pytest tests/ -v     # 45 tests, real HTTP round-trips via FastAPI TestClient
+pytest tests/ -v     # real HTTP round-trips via FastAPI TestClient
 ruff check .
 ```
 
