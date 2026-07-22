@@ -35,6 +35,11 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         # Optional command the dev-loop runs at Gate 2 to score a proposed patch
         # against held-out truth. Empty for apps without an evaluator.
         "evaluator": "",
+        # Optional analyzer command the dev-loop runs to turn the usage log into
+        # the signal report the feature-suggester reads. Empty → the generic HTTP
+        # analyzer (scripts/analyze_usage.py); an engagement points it at its own
+        # domain gap-ranker. A command, not a path, so it is not resolved.
+        "analyzer": "",
     },
     "simulator": {
         "edge_cases": "edge_cases.json",

@@ -9,6 +9,10 @@ usage_log = "usage_log.jsonl"                      # → engagements/madi_onboar
 version_files = ["engagements/madi_onboarding/app/main.py"]
 # The held-out oracle the dev-loop runs at Gate 2 to score a proposed adapter.
 evaluator = "python engagements/madi_onboarding/evaluate.py"
+# The domain gap-ranker the dev-loop runs to build the feature-suggester's signal
+# (the orchestrator appends the usage-log path). This is what wires the engagement
+# analyzer into the loop instead of the generic HTTP one.
+analyzer = "python engagements/madi_onboarding/analyze_integration.py --source forbes"
 
 [protected]
 # The implementer patch may never touch these — the evaluator, the mapping

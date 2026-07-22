@@ -63,19 +63,23 @@ wc -l "$(python scripts/flywheel_config.py --get app.usage_log)"
 
 ## STEP 2 — Suggest features (subagent, read-only)
 
-Invoke the **feature-suggester** subagent:
-
-First resolve the app source file and usage-log path from config (module
-`pkg.mod:app` → source `pkg/mod.py`):
+Resolve paths from config and **run the analyzer yourself** — the feature-suggester
+is a read-only planner with no shell, so you produce its input. The analyzer command
+comes from config (`app.analyzer`), defaulting to the generic HTTP analyzer; an
+engagement points it at its own domain gap-ranker:
 
 ```bash
-python scripts/flywheel_config.py --get app.usage_log
+USAGE_LOG=$(python scripts/flywheel_config.py --get app.usage_log)
+ANALYZER=$(python scripts/flywheel_config.py --get app.analyzer)   # empty → generic
+REPORT=$(${ANALYZER:-python scripts/analyze_usage.py} "$USAGE_LOG")
 python scripts/flywheel_config.py --get app.module   # e.g. app.main:app → app/main.py
 ```
 
+Invoke the **feature-suggester** subagent, passing the report inline:
+
 ```
 Agent: feature-suggester
-Input: "Run scripts/analyze_usage.py on <usage_log path from config>, read <app source file from config> for currently-supported functionality, and propose 2-3 features that are NOT already implemented."
+Input: "Signal report:\n<the $REPORT text>\n\nRead <app source file from config> for currently-supported functionality, and propose 2-3 features that are NOT already implemented."
 ```
 
 The subagent returns a PROPOSALS block with 2-3 options, each with:

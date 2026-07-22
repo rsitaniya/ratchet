@@ -108,3 +108,23 @@ def test_load_edge_cases_absent_file_is_empty(tmp_path):
     cfg = _write_config(tmp_path, '[simulator]\nedge_cases = "missing.json"\n')
     conf = flywheel_config.load_config(cfg)
     assert flywheel_config.load_edge_cases(conf) == {}
+
+
+def test_analyzer_defaults_empty_and_is_not_path_resolved(tmp_path):
+    # app.analyzer is a command, not a path: it must survive verbatim, not be
+    # rewritten relative to the config dir (that would corrupt the command).
+    cfg = _write_config(tmp_path, '[app]\nanalyzer = "python engagements/x/analyze.py --source s"\n')
+    conf = flywheel_config.load_config(cfg)
+    assert conf["app"]["analyzer"] == "python engagements/x/analyze.py --source s"
+    # A config that omits it gets the empty default (→ generic analyzer).
+    d = tmp_path / "d"
+    d.mkdir()
+    assert flywheel_config.load_config(_write_config(d, "[app]\n"))["app"]["analyzer"] == ""
+
+
+def test_engagement_config_wires_its_own_analyzer():
+    from pathlib import Path
+
+    eng = Path(__file__).resolve().parent.parent / "engagements" / "madi_onboarding" / "flywheel.toml"
+    analyzer = flywheel_config.load_config(eng)["app"]["analyzer"]
+    assert analyzer.endswith("analyze_integration.py --source forbes"), analyzer

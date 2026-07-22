@@ -104,35 +104,65 @@ jobs:
           python scripts/simulate.py --run-id ci-baseline
           python engagements/madi_onboarding/analyze_integration.py "$USAGE_LOG_PATH" --source forbes
 
-      # The oracle: at the seed state forbes is unonboarded (0) and the already-
-      # onboarded dbpedia is perfect (1.0). These come from held-out gold, so a
-      # broken evaluator or a gamed adapter would fail this gate.
-      - name: Evaluate baseline against gold
+      # The oracle, tested as invariants — not frozen seed values. Pinning the
+      # committed metrics to their seed would make a successful loop improvement
+      # fail CI. Instead assert what must hold at any rule state: the already-
+      # onboarded source never regresses, every metric is well-formed, and
+      # converged rules beat the seed (the property the loop depends on).
+      - name: Evaluate the oracle (no-regression + progression)
         run: |
           python engagements/madi_onboarding/evaluate.py > /tmp/eval.json
           python - <<'PY'
-          import json
+          import json, tempfile
+          from pathlib import Path
+          from engagements.madi_onboarding import evaluate as E
+
           e = json.load(open("/tmp/eval.json"))
           d = e["per_source"]
+          # Invariant: the source already in production must never regress.
           assert d["dbpedia"]["fully_correct_rate"] == 1.0, d["dbpedia"]
-          assert d["forbes"]["integrated_rate"] == 0.0, d["forbes"]
-          # Stage 2 seed baseline: exact-name matching finds nothing; naive fusion
-          # is partial. Both are scored against gold the loop cannot touch.
+          # Well-formedness: every metric present and in range, for every source.
+          for src, m in d.items():
+              for k in ("integrated_rate", "fully_correct_rate"):
+                  assert 0.0 <= m[k] <= 1.0, (src, k, m)
           rec = e["reconcile"]
-          assert rec["entity_matching"]["f1"] == 0.0, rec["entity_matching"]
-          assert rec["fusion"]["accuracy"] == 0.875, rec["fusion"]
-          print("baseline oracle OK (schema+value+matching+fusion):", e)
+          assert {"precision", "recall", "f1"} <= set(rec["entity_matching"]), rec
+          assert "accuracy" in rec["fusion"], rec
+
+          # Progression + no cross-regression: converged reconcile rules must beat
+          # the committed seed on their target metric and reach 1.0, dbpedia held.
+          fx = Path("engagements/madi_onboarding/fixtures")
+          tmp = Path(tempfile.mkdtemp())
+          (tmp / "m.toml").write_text(
+              'threshold = 0.88\nblocking_key = "country"\n'
+              '[[compare]]\nfield = "name"\nsimilarity = "jaro_winkler"\nweight = 0.7\n'
+              '[[compare]]\nfield = "city"\nsimilarity = "exact"\nweight = 0.3\n'
+          )
+          (tmp / "f.toml").write_text(
+              'default_strategy = "prefer_source"\nsource_priority = ["acme_crm", "vendor_erp"]\n'
+              '[attributes.revenue]\nstrategy = "prefer_source"\nsource_priority = ["vendor_erp", "acme_crm"]\n'
+          )
+          seed = E.evaluate_reconcile(fx)
+          conv = E.evaluate_reconcile(fx, matching_rules_path=tmp / "m.toml", fusion_rules_path=tmp / "f.toml")
+          assert conv["entity_matching"]["f1"] > seed["entity_matching"]["f1"], (seed, conv)
+          assert conv["fusion"]["accuracy"] >= seed["fusion"]["accuracy"], (seed, conv)
+          assert conv["entity_matching"]["f1"] == 1.0 and conv["fusion"]["accuracy"] == 1.0, conv
+          print("oracle OK: no-regression + well-formed + converged>seed:", conv)
           PY
 
-      # The loop must not be able to edit what scores it.
-      - name: Protected-path guard rejects an evaluator edit
+      # The loop must not be able to edit what scores it — including via a
+      # quoted/escaped path that fools a naive text parser but not `git apply`.
+      - name: Protected-path guard rejects plain and escaped evaluator edits
         run: |
-          printf 'diff --git a/engagements/madi_onboarding/evaluate.py b/engagements/madi_onboarding/evaluate.py\n--- a/engagements/madi_onboarding/evaluate.py\n+++ b/engagements/madi_onboarding/evaluate.py\n@@ -1 +1 @@\n-x\n+y\n' > /tmp/evil.patch
-          if python scripts/check_protected_paths.py /tmp/evil.patch; then
-            echo "ERROR: evaluator edit was NOT rejected"; exit 1
-          else
-            echo "evaluator edit correctly rejected (exit 2)"
-          fi
+          set -e
+          printf 'diff --git a/engagements/madi_onboarding/evaluate.py b/engagements/madi_onboarding/evaluate.py\n--- a/engagements/madi_onboarding/evaluate.py\n+++ b/engagements/madi_onboarding/evaluate.py\n@@ -1 +1 @@\n-x\n+y\n' > /tmp/plain.patch
+          printf 'diff --git "a/engagements/madi_onboarding/\\145valuate.py" "b/engagements/madi_onboarding/\\145valuate.py"\n--- "a/engagements/madi_onboarding/\\145valuate.py"\n+++ "b/engagements/madi_onboarding/\\145valuate.py"\n@@ -0,0 +1 @@\n+x\n' > /tmp/escaped.patch
+          for p in /tmp/plain.patch /tmp/escaped.patch; do
+            if python scripts/check_protected_paths.py "$p"; then
+              echo "ERROR: $p was NOT rejected"; exit 1
+            fi
+            echo "correctly rejected: $p"
+          done
 
       # Reproducibility check: the pinned downloader fetches the real MaDI data and
       # verifies git blob SHAs. Non-fatal so external availability never reds CI.
