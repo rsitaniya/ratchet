@@ -8,19 +8,18 @@ Most "AI writes code" demos stop at the diff. You describe a feature, a model em
 some code, you paste it in. The impressive part is the generation — which is also the
 part that's now commoditised.
 
-The part nobody demos is the rest of the loop: **deciding what to build**, proving it
-works, and making the next iteration aware of what the last one shipped. That's where
-the actual engineering is. So I built the smallest possible thing that closes it.
+The part nobody demos is the rest of the loop: deciding what to build, proving it works,
+and making the next iteration aware of what the last one shipped. That's where the
+actual engineering is, so I built the smallest thing that closes it.
 
-The result is a calculator API. The calculator is deliberately, aggressively boring —
-seven arithmetic operations. **The calculator is not the project.** The loop around it
-is.
+The result is a calculator API — seven arithmetic operations, deliberately boring. The
+calculator is not the project; the loop around it is.
 
 ## The loop
 
 Every request the API serves is appended to `usage_log.jsonl` by a ~20-line middleware.
 An analyzer turns that raw log into a signal report. An agent reads the report and
-proposes features — **citing the numbers**. I approve one. A second agent returns a
+proposes features, citing the numbers. I approve one. A second agent returns a
 unified diff. An orchestrator validates it with `git apply --check`, applies it, and
 runs the tests. Then the simulator re-reads `/openapi.json`, notices an endpoint that
 didn't exist sixty seconds ago, and starts generating traffic against it.

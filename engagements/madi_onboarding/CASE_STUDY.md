@@ -1,11 +1,11 @@
 # Case study: onboarding a new partner data source with the flywheel
 
-**What this shows:** dev-flywheel pointed at a partner-data onboarding API,
-growing a new source's integration from **0% to 100% correct** (schema matching +
-value normalization), then reconciling records across sources with **entity
-matching (F1 0→1.0)** and **data fusion (accuracy 0.875→1.0)** — every step scored
-against **held-out gold labels** the loop is forbidden to touch. This is a
-reproducible benchmark of the loop's decisions, not a business-impact claim.
+**What this shows:** dev-flywheel pointed at a partner-data onboarding API, growing a
+new source's integration from 0% to 100% correct (schema matching + value
+normalization), then reconciling records across sources with entity matching (F1 0→1.0)
+and data fusion (accuracy 0.875→1.0) — every step scored against held-out gold labels
+the loop is forbidden to touch. This is a reproducible benchmark of the loop's
+decisions, not a business-impact claim.
 
 ## The setup
 

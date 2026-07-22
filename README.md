@@ -6,19 +6,18 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 
-Most "AI writes code" demos stop at generating a diff. The interesting problem is
-the rest of the loop: *deciding what to build*, proving it works, and making the
-next iteration see what the last one shipped.
+Most "AI writes code" demos stop at generating a diff. The harder problem is the rest
+of the loop: deciding what to build, proving it works, and making the next iteration
+aware of what the last one shipped.
 
 dev-flywheel closes that loop. Every request the API serves becomes a line of
-telemetry. An analyzer turns that telemetry into signal. An agent proposes features
-grounded in that signal — **citing the numbers** — a human approves one, and a
-read-only subagent returns a unified diff that the orchestrator validates and
-applies. Tests gate the merge. Then the simulator re-reads `/openapi.json`, discovers
-the endpoint that was just born, and starts generating traffic against it.
+telemetry. An analyzer turns that telemetry into a signal report. An agent proposes
+features grounded in that signal, citing the numbers; a human approves one; a read-only
+subagent returns a unified diff that the orchestrator validates and applies; tests gate
+the merge. The simulator then re-reads `/openapi.json`, discovers the new endpoint, and
+generates traffic against it — which becomes the next cycle's signal.
 
-Round and round. The calculator in `app/` is deliberately trivial — **the loop is
-the product.**
+The calculator in `app/` is deliberately trivial; the loop is the product.
 
 ---
 
@@ -26,16 +25,16 @@ the product.**
 
 ```mermaid
 flowchart TD
-    SIM["🔁 <b>simulate</b><br/><i>reads /openapi.json — never hand-edited</i>"]
-    LOG[("📥 <b>usage_log.jsonl</b><br/><i>append-only telemetry</i>")]
-    AN["📊 <b>analyze</b><br/><i>volume · error rates · 404 demand</i>"]
-    SUG["🤖 <b>feature-suggester</b><br/><i>read-only · must cite the numbers</i>"]
-    HUM{{"🧑 <b>HUMAN APPROVES</b><br/><i>the only blocking step</i>"}}
-    IMP["🤖 <b>implementer</b><br/><i>read-only · returns a unified diff</i>"]
-    GA["✅ <b>git apply --check</b><br/><i>orchestrator validates, then writes</i>"]
-    TEST["🧪 <b>pytest</b><br/><i>gates the cycle</i>"]
-    DOC["🤖 <b>docs-updater</b><br/><i>read-only · OpenAPI metadata</i>"]
-    API["🚀 <b>new endpoint live</b><br/><i>appears in /openapi.json</i>"]
+    SIM["<b>simulate</b><br/><i>reads /openapi.json — never hand-edited</i>"]
+    LOG[("<b>usage_log.jsonl</b><br/><i>append-only telemetry</i>")]
+    AN["<b>analyze</b><br/><i>volume · error rates · 404 demand</i>"]
+    SUG["<b>feature-suggester</b><br/><i>read-only · must cite the numbers</i>"]
+    HUM{{"<b>human approves</b><br/><i>the only blocking step</i>"}}
+    IMP["<b>implementer</b><br/><i>read-only · returns a unified diff</i>"]
+    GA["<b>git apply --check</b><br/><i>orchestrator validates, then writes</i>"]
+    TEST["<b>pytest</b><br/><i>gates the cycle</i>"]
+    DOC["<b>docs-updater</b><br/><i>read-only · OpenAPI metadata</i>"]
+    API["<b>new endpoint live</b><br/><i>appears in /openapi.json</i>"]
 
     SIM --> LOG --> AN --> SUG --> HUM --> IMP --> GA --> TEST --> DOC --> API
     API -.->|"re-fetches the schema and exercises<br/>the new endpoint automatically"| SIM
@@ -85,42 +84,39 @@ uvicorn app.main:app --reload    # terminal 1
 
 ---
 
-## Receipts
+## Shipped by the loop
 
-These features weren't planned. They were **proposed from the data and shipped by the
-loop** — the CHANGELOG records the signal that motivated each one:
+None of these features were planned. Each was proposed from the usage data and shipped
+by the loop; the CHANGELOG records the signal that motivated each one:
 
 | Version | Feature | The signal that caused it |
 |---------|---------|---------------------------|
-| `0.2.0` | `mod` operation | 2/129 calls returned **HTTP 422 on `op=modulo`** — people asked for an op that didn't exist |
-| `0.3.0` | `abs` operation | **82 calls with negative `a`**, 76 with negative `b` |
-| `0.5.0` | `safe_divide` | Repeated **`b=0`** traffic taking a hard `400` — clients wanted `null`, not an error |
+| `0.2.0` | `mod` operation | 2/129 calls returned HTTP 422 on `op=modulo` — an op that didn't exist |
+| `0.3.0` | `abs` operation | 82 calls with negative `a`, 76 with negative `b` |
+| `0.5.0` | `safe_divide` | Repeated `b=0` traffic taking a hard `400` — clients wanted `null`, not an error |
 
-## Three ideas worth stealing
+## Design decisions
 
-**1. A 404 is a feature request.**
-The usage middleware records requests to paths that *don't exist*. A `GET /sqrt`
-returning 404 nine times is the strongest possible signal that someone wants `/sqrt`.
-Most telemetry throws these away as noise; here, unmet demand is the highest-quality
-input the loop has.
+**A 404 is a feature request.** The usage middleware records requests to paths that
+don't exist. A `GET /sqrt` returning 404 nine times is a strong signal that someone
+wants `/sqrt`. Most telemetry discards these as noise; here, unmet demand is the
+highest-quality input the loop has.
 
-**2. Planners are read-only; the orchestrator is the only writer.**
-Every subagent (`feature-suggester`, `implementer`, `docs-updater`) is declared with
-read-only tools and returns a **unified diff** as its contract. The orchestrator runs
-`git apply --check` before touching the tree. This means no agent can half-write a
-file, every handoff is auditable and reviewable, and a malformed patch fails loudly
-instead of corrupting the repo. It's the multi-agent write-safety problem solved with
-`git` instead of a framework.
+**Planners are read-only; the orchestrator is the only writer.** Every subagent
+(`feature-suggester`, `implementer`, `docs-updater`) is declared with read-only tools
+and returns a unified diff as its contract. The orchestrator runs `git apply --check`
+before touching the tree. No agent can half-write a file, every handoff is auditable,
+and a malformed patch fails loudly instead of corrupting the repo — the multi-agent
+write-safety problem solved with `git` instead of a framework.
 
-**3. The human gate lives in the parent, not the subagent.**
-Subagents run headlessly and *cannot* block for input. So the approval step has to sit
-in the orchestrating skill — a constraint of the execution model that the design takes
-seriously rather than working around.
+**The human gate lives in the parent, not the subagent.** Subagents run headlessly and
+cannot block for input, so the approval step sits in the orchestrating skill — a
+constraint of the execution model the design follows rather than works around.
 
 ## Reference engagement: partner-data onboarding
 
-The calculator proves the loop closes. The **[MaDI onboarding engagement](engagements/madi_onboarding/)**
-proves it makes *good* decisions — because they're scored against held-out truth.
+The calculator proves the loop closes. The [MaDI onboarding engagement](engagements/madi_onboarding/)
+proves it makes good decisions, because they are scored against held-out truth.
 
 The same generic loop is pointed (by config alone) at a `POST /ingest` service that
 maps and normalizes partner records into a canonical company schema via declarative
@@ -143,11 +139,11 @@ the loop grows fuzzy-match rules) and **data fusion** (accuracy 0.875 → 1.00 a
 learns per-attribute conflict resolution) — again scored against gold, with the
 match/fuse engines protected alongside the evaluator.
 
-Two things make this different from a code-only autonomous loop (OpenHands, Forge):
-it **starts from product signal**, not a task prompt; and its metrics **can't be
-gamed by returning 200** — a plausible-but-wrong mapping (`sales → assets`) is
-caught by the oracle, and a patch that tries to edit the evaluator is rejected
-before it applies. Full write-up: **[CASE_STUDY.md](engagements/madi_onboarding/CASE_STUDY.md)**.
+Two things separate this from a code-only autonomous loop (OpenHands, Forge): it starts
+from product signal, not a task prompt; and its metrics cannot be gamed by returning
+200 — a plausible-but-wrong mapping (`sales → assets`) is caught by the oracle, and a
+patch that tries to edit the evaluator is rejected before it applies. Full write-up:
+[CASE_STUDY.md](engagements/madi_onboarding/CASE_STUDY.md).
 
 ## How it works
 

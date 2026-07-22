@@ -58,3 +58,10 @@ uvicorn app.main:app --reload
 - **No domain knowledge in the loop.** `scripts/` and `.claude/` must stay generic. Anything app-specific belongs in `flywheel.toml`, `edge_cases.json`, or an `engagements/<name>/` package. All degrade gracefully when absent.
 - **Two human gates + a protected evaluator.** The loop blocks at Gate 1 (approve the proposal) and Gate 2 (approve the exact tested patch after the app's `[app].evaluator` runs). The implementer may never edit paths in `[protected].paths` (held-out evaluator, gold, fixtures) — `check_protected_paths.py` enforces this before `git apply`.
 - **Adapters are data.** An engagement grows mostly by adding declarative config the app reads (e.g. onboarding adapters), not agent-written code; new code is reserved for genuinely new behavior and is covered by tests + the evaluator.
+
+## Writing style — no AI slop
+
+Code and docs read like an engineer wrote them, not like an LLM wrote marketing copy. Keep clean-code / Karpathy discipline on: clear, concise, efficient, minimal.
+
+- **Code:** minimal comments — only load-bearing "why" (a constraint the code can't show). No speculative abstractions, no dead code, match the existing pattern.
+- **Docs:** no emoji in diagrams or headers, no rhetorical/marketing section titles, no bold-spray, no essayist asides. Keep the substance and the honest numbers; cut the flourish.
