@@ -15,6 +15,17 @@ fully automated bonus, run this skill through Claude Code's built-in `/loop` run
 
 ## STEP 1 — Simulate
 
+**Precondition: the working tree must be clean.** This cycle applies patches and,
+on a Gate-2 revert, discards every uncommitted change to restore the pre-cycle
+state. If the tree already has uncommitted work, that revert would destroy it, so
+refuse to start:
+
+```bash
+if [ -n "$(git status --porcelain)" ]; then
+  echo "ABORT: working tree is dirty. Commit or stash before running the loop."; exit 1
+fi
+```
+
 Everything domain-specific comes from the active `flywheel.toml` (selected by
 `$FLYWHEEL_CONFIG`, else the repo-root file). Read the app module, base URL, and
 usage-log path from it rather than hardcoding — that is what lets this one loop
@@ -79,7 +90,7 @@ Capture the full PROPOSALS text.
 ## STEP 3 — HUMAN APPROVAL: GATE 1 (approve the proposal) ⏸
 
 **The loop has two human gates. This is the first: approving *what* to build.**
-(Gate 2, in STEP 5.5, approves the *exact tested patch* before it is kept.)
+(Gate 2, in STEP 6, approves the *exact tested tree* before it is kept.)
 
 Present the proposals to the user using AskUserQuestion. Show all 2-3 options
 with their signal and description. Ask the user to pick one.
@@ -133,7 +144,7 @@ EDGE_CASES: {"<op-or-feature>": [{"a": .., "b": ..}, ...]}
 4. **Version bump** — Use **Edit** to update the version string in every file listed in `[app].version_files` in `flywheel.toml` (by default: `app/main.py`, `pyproject.toml`, `CHANGELOG.md`) so the running app's version always matches the latest CHANGELOG release.
 5. **Simulator edge cases** — Parse `EDGE_CASES:` (JSON) → use **Edit** to merge the new entry into the JSON file named by `[simulator].edge_cases` in `flywheel.toml` (by default `edge_cases.json`), so the next simulator run exercises the new feature intelligently (not just with random inputs). Keys starting with `_` are documentation and are ignored by the loader.
 
-> The docs INSIDE the API (`/openapi.json`) are handled separately by the docs-updater in STEP 7. STEPs 3–5 above keep the *project* docs (CHANGELOG, version, simulator) in sync; STEP 7 keeps the *API* docs in sync. Both must happen every cycle.
+> The docs INSIDE the API (`/openapi.json`) are handled separately by the docs-updater in STEP 5.5. STEPs 3–5 above keep the *project* docs (CHANGELOG, version, simulator) in sync; STEP 5.5 keeps the *API* docs in sync. Both must happen every cycle.
 
 ---
 
@@ -150,25 +161,48 @@ pytest tests/ -v
 
 ---
 
-## STEP 5.5 — HUMAN APPROVAL: GATE 2 (approve the exact tested patch) ⏸
+## STEP 5.5 — Update API docs (subagent, read-only)
 
-**The second gate. Approving what to build (Gate 1) does not authorize whatever
-patch the implementer happened to produce.** An agent can make tests pass by
-weakening them; a held-out evaluator and a human looking at the actual diff are
-what catch that.
+Invoke the **docs-updater** subagent BEFORE the approval gate, so the human
+approves — and the evaluator scores — the complete final tree, not a partial one.
 
-1. **Run the app's evaluator, if it declares one.** Read `python scripts/flywheel_config.py --get app.evaluator` (a command; empty for apps without one, e.g. the calculator — then skip to step 2). Run it and capture the machine-readable result. If the app also declares a baseline from before this cycle, compare: the primary metric must improve and no previously-passing metric may regress. If the evaluator shows a regression, treat this like a test failure — do not proceed; revert (below) or fix.
-2. **Show the human the exact change.** Present: the diff hash (`git diff | git hash-object --stdin`), the list of changed files, the diff itself (or a tight summary for large diffs), and the evaluator result. Use AskUserQuestion: "Keep this patch? (Gate 2)" with options Keep / Revert.
-3. **On Revert:** `git checkout -- .` and `git clean -fd` the newly added test/adapter files to restore the pre-patch tree, report why, and end the cycle cleanly. **On Keep:** proceed.
+```
+Agent: docs-updater
+Input: "Feature just implemented: [feature name and description]. Check <app source file from config> for complete OpenAPI metadata."
+```
 
-Do NOT proceed past this gate without an explicit Keep. For the calculator
-example (no evaluator, no `[protected]` paths) this gate is a quick visual
-confirm of the diff; for an engagement with a protected evaluator it is the
-real safety boundary.
+The subagent returns either `NO_CHANGES_NEEDED` or a `PATCH:` unified diff.
+
+**Orchestrator applies the patch under the SAME guard as every other patch —
+a docs patch is not exempt:**
+- If it returns `PATCH:`, extract the diff into a temp file and run
+  `python scripts/check_protected_paths.py <tempfile>` FIRST. **Exit 2 = the patch
+  touches a protected path → REJECT it** and ask docs-updater to resubmit. On
+  exit 0, run `git apply --check <tempfile>` then `git apply <tempfile>`.
+- If `git apply --check` fails, repair the metadata patch directly or ask
+  docs-updater for a corrected unified diff.
 
 ---
 
-## STEP 6 — Restart server to reload new routes
+## STEP 6 — HUMAN APPROVAL: GATE 2 (approve the exact tested tree) ⏸
+
+**The second gate, and it runs after every edit this cycle — code, tests,
+changelog, version, edge cases, and docs are all applied by now.** Approving what
+to build (Gate 1) does not authorize whatever the implementer produced. An agent
+can make tests pass by weakening them; a held-out evaluator plus a human reading
+the actual diff are what catch that.
+
+1. **Run the app's evaluator, if it declares one.** Read `python scripts/flywheel_config.py --get app.evaluator` (a command; empty for apps without one, e.g. the calculator — then skip to step 2). Run it and capture the machine-readable result. If the app declares a pre-cycle baseline, compare: the primary metric must improve and no previously-passing metric may regress. A regression is treated like a test failure — do not proceed; revert (below) or fix.
+2. **Show the human the exact change.** Present the diff hash (`git diff | git hash-object --stdin`), the changed-file list, the diff (or a tight summary if large), and the evaluator result. Use AskUserQuestion: "Keep this patch? (Gate 2)" with options Keep / Revert.
+3. **On Revert:** restore the pre-cycle tree, report why, and end the cycle cleanly. Because STEP 1 refused to start on a dirty tree, everything uncommitted belongs to this cycle, so `git checkout -- .` followed by `git clean -fd` is safe — gitignored runtime files (e.g. the usage log) are preserved. **On Keep:** proceed.
+
+Do NOT proceed past this gate without an explicit Keep. For the calculator
+(no evaluator, no `[protected]` paths) this is a quick visual confirm of the
+diff; for an engagement with a protected evaluator it is the real safety boundary.
+
+---
+
+## STEP 7 — Restart server to reload new routes
 
 ```bash
 APP=$(python scripts/flywheel_config.py --get app.module)
@@ -193,23 +227,6 @@ for name, comp in schema.get('components', {}).get('schemas', {}).items():
         print(f'{name} enum:', comp['enum'])
 "
 ```
-
----
-
-## STEP 7 — Update docs (subagent, read-only)
-
-Invoke the **docs-updater** subagent:
-
-```
-Agent: docs-updater
-Input: "Feature just implemented: [feature name and description]. Check <app source file from config> for complete OpenAPI metadata."
-```
-
-The subagent returns either `NO_CHANGES_NEEDED` or a `PATCH:` unified diff.
-
-**Orchestrator applies patches:**
-- If it returns `PATCH:`, extract the diff into a temp file and run `git apply --check <tempfile>` before `git apply <tempfile>`.
-- If `git apply --check` fails, inspect the failure and repair the metadata patch directly or ask docs-updater for a corrected unified diff.
 
 ---
 
@@ -249,7 +266,7 @@ bonus is handled by Claude Code's built-in loop runner:
 ```
 
 That single command repeats this cycle until stopped. The human gates (STEP 3
-and STEP 5.5) are the blocking steps; press Ctrl+C or choose "Skip this cycle"
+and STEP 6) are the blocking steps; press Ctrl+C or choose "Skip this cycle"
 to stop.
 
 ---
@@ -258,7 +275,8 @@ to stop.
 
 - **Subagents are read-only.** They return structured text only. This orchestrator applies every write.
 - **Subagent patches use standard unified diff format.** Validate with `git apply --check` before applying.
-- **Two human gates block the loop: STEP 3 (approve the proposal) and STEP 5.5 (approve the exact tested patch).** All other steps chain automatically.
+- **Two human gates block the loop: STEP 3 (approve the proposal) and STEP 6 (approve the exact tested tree).** All other steps chain automatically.
+- **Every applied patch — code, docs, anything — passes `check_protected_paths.py` before `git apply`.** No patch is exempt. The evaluator and Gate 2 run only after all edits are applied, so they judge the final tree.
 - **The implementer may never touch protected paths** (held-out evaluators, gold, fixtures, scoring). The orchestrator rejects such patches before applying (STEP 4.1). This is enforcement, not etiquette — it is what keeps the loop's own metrics honest.
 - **Continuous mode uses Claude Code's built-in `/loop` runner.** Use `/loop /dev-loop`; stop with Ctrl+C.
 - **Do not skip the test step.** A feature is not shipped until `pytest tests/ -v` passes.

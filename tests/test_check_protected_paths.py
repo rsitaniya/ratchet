@@ -1,5 +1,7 @@
 """Tests for the protected-path enforcement the orchestrator runs before apply."""
 import subprocess
+import tomllib
+from pathlib import Path
 
 import check_protected_paths as C
 
@@ -74,6 +76,20 @@ def test_normalizers_and_adapter_data_stay_writable():
 def test_no_globs_means_nothing_protected():
     # The calculator declares no protected paths → nothing is blocked.
     assert C.protected_hits(C.changed_paths(_diff(EVALUATOR)), []) == []
+
+
+def test_engagement_config_protects_loop_machinery():
+    # The engagement must forbid editing its own config and orchestration, or the
+    # loop could disable the evaluator or weaken the guard itself.
+    cfg = tomllib.loads((Path(__file__).resolve().parent.parent / BASE / "flywheel.toml").read_text())
+    globs = cfg["protected"]["paths"]
+    assert C.protected_hits([f"{BASE}/flywheel.toml"], globs)          # the config declaring the evaluator
+    assert C.protected_hits(["scripts/check_protected_paths.py"], globs)  # the guard
+    assert C.protected_hits([".claude/skills/dev-loop/SKILL.md"], globs)  # the orchestrator
+    assert C.protected_hits([EVALUATOR], globs)
+    # ...but the loop can still grow adapter data and normalizers.
+    assert C.protected_hits([ADAPTER], globs) == []
+    assert C.protected_hits([f"{BASE}/normalizers.py"], globs) == []
 
 
 # --- Git-native path detection (the real security boundary) ---

@@ -21,6 +21,9 @@ paths = [
     "**/adapters.py", "**/matching.py", "**/fusion.py",   # the engines the evaluator runs
     "**/fixtures/**",                                       # sources + gold (records, pairs, fused)
     "**/gold_*.json", "**/*_gold.json",
+    "**/flywheel.toml",                                    # this file: declares the evaluator and this very list
+    "scripts/**",                                          # the loop's own machinery (guard, config loader, simulator)
+    ".claude/**",                                          # the orchestrator skills and agent definitions
 ]
 
 [simulator]
