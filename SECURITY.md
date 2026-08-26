@@ -24,6 +24,7 @@ This is a local, single-operator development loop and benchmark harness. It is n
 - Query parameters are recorded verbatim. Do not treat the local usage log as a secret-safe store.
 - Telemetry is append-only and read into memory. Rotate, bound, and harden it before high-volume use.
 - `/reconcile` is fixture-scale; production entity resolution needs blocking and resource limits.
+- `record_id_hash` in telemetry is a keyed HMAC (`RECORD_ID_HASH_KEY`), not a bare hash, so it resists dictionary/rainbow-table recovery from a guessable id space — but the app falls back to a fixed, non-secret dev key when the env var is unset. Set `RECORD_ID_HASH_KEY` in any real deployment.
 
 ## Robustness measures
 

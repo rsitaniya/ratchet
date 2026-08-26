@@ -90,7 +90,21 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("log_path", nargs="?", default="usage_log.jsonl")
     ap.add_argument("--source", default=None)
     ap.add_argument("--run-id", default=None)
+    ap.add_argument("--reconcile", action="store_true", help="rank Stage 2 (matching/fusion) gaps instead")
     args = ap.parse_args(argv)
+
+    if args.reconcile:
+        report = summarize_reconcile(_load(args.log_path), args.run_id)
+        print("── Entity matching ─────────────────────────────────────")
+        print(f"  match rate: {report['match_rate'] * 100:.1f}%  "
+              f"(matched={report['matched']}, unmatched={report['unmatched']})")
+        print()
+        print("── Fusion conflicts (rank by conflicting pairs) ────────")
+        if not report["attribute_conflicts"]:
+            print("  (none)")
+        for c in report["attribute_conflicts"][:15]:
+            print(f"  {c['conflicting_pairs']:>4} pairs  {c['field']}")
+        return
 
     report = summarize(_load(args.log_path), args.source, args.run_id)
     if not report["sources"]:

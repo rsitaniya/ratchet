@@ -43,10 +43,13 @@ def score_pair(left: dict, right: dict, compares: list[dict]) -> float:
 
 
 def match(left: list[dict], right: list[dict], rules: dict) -> list[tuple[str, str]]:
-    """Return predicted (left_id, right_id) matched pairs.
+    """Return predicted (left_id, right_id) matched pairs, each side used at most once.
 
     A blocking key (optional) skips comparing records that disagree on it — the
-    standard candidate-reduction step. Pairs scoring >= threshold are matches.
+    standard candidate-reduction step. Every pair scoring >= threshold is a
+    candidate; candidates are then assigned greedily by descending score, so a
+    record already claimed by a higher-scoring pair can never also be handed to
+    a second match on the other side (an entity is one entity).
     """
     for rec in (*left, *right):
         if similarity.is_absent(rec.get("record_id")):
@@ -54,7 +57,7 @@ def match(left: list[dict], right: list[dict], rules: dict) -> list[tuple[str, s
     threshold = rules.get("threshold", 0.85)
     blocking = rules.get("blocking_key")
     compares = rules.get("compare", [])
-    pairs: list[tuple[str, str]] = []
+    candidates: list[tuple[float, str, str]] = []
     for lrec in left:
         for rrec in right:
             if blocking:
@@ -64,6 +67,18 @@ def match(left: list[dict], right: list[dict], rules: dict) -> list[tuple[str, s
                 # fields produced false matches).
                 if similarity.is_absent(lb) or similarity.is_absent(rb) or lb != rb:
                     continue
-            if score_pair(lrec, rrec, compares) >= threshold:
-                pairs.append((lrec["record_id"], rrec["record_id"]))
+            score = score_pair(lrec, rrec, compares)
+            if score >= threshold:
+                candidates.append((score, lrec["record_id"], rrec["record_id"]))
+
+    candidates.sort(key=lambda c: c[0], reverse=True)
+    matched_left: set[str] = set()
+    matched_right: set[str] = set()
+    pairs: list[tuple[str, str]] = []
+    for _score, lid, rid in candidates:
+        if lid in matched_left or rid in matched_right:
+            continue
+        matched_left.add(lid)
+        matched_right.add(rid)
+        pairs.append((lid, rid))
     return pairs

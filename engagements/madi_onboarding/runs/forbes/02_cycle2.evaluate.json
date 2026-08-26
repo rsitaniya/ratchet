@@ -4,7 +4,7 @@
       "source": "dbpedia",
       "records": 6,
       "schema_f1": 1.0,
-      "value_accuracy": 1.0,
+      "value_recall": 1.0,
       "integrated_rate": 1.0,
       "fully_correct_rate": 1.0
     },
@@ -12,7 +12,7 @@
       "source": "forbes",
       "records": 6,
       "schema_f1": 1.0,
-      "value_accuracy": 1.0,
+      "value_recall": 1.0,
       "integrated_rate": 1.0,
       "fully_correct_rate": 1.0
     }

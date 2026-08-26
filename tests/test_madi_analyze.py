@@ -1,4 +1,6 @@
 """Tests for the engagement analyzer's gap ranking."""
+import json
+
 from engagements.madi_onboarding import analyze_integration as AI
 
 
@@ -53,3 +55,19 @@ def test_two_records_sharing_a_record_id_hash_undercount_affected_records():
     rows = [_gap("sales", "h1"), _gap("sales", "h1")]  # two distinct events, same hash
     rep = AI.summarize(rows, run_id="r1", source="forbes")
     assert rep["gaps"][0]["affected_records"] == 1
+
+
+def test_reconcile_cli_flag_prints_match_rate_and_ranked_conflicts(tmp_path, capsys):
+    rows = [
+        {"event": "reconcile_summary", "run_id": "r1", "matched": 5, "unmatched_left": 1, "unmatched_right": 1},
+        {"event": "reconcile", "stage": "fusion", "run_id": "r1", "field": "revenue", "record_id_hash": "h1"},
+        {"event": "reconcile", "stage": "fusion", "run_id": "r1", "field": "revenue", "record_id_hash": "h2"},
+    ]
+    log = tmp_path / "usage.jsonl"
+    log.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+
+    AI.main([str(log), "--reconcile", "--run-id", "r1"])
+    out = capsys.readouterr().out
+    assert "match rate: 71.4%" in out
+    assert "matched=5" in out and "unmatched=2" in out
+    assert "2 pairs  revenue" in out

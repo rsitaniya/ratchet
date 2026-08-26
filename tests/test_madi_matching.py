@@ -74,6 +74,27 @@ def test_missing_record_id_is_rejected():
         M.match([{"name": "Acme", "country": "US"}], [{"record_id": "R", "country": "US"}], CONVERGED)
 
 
+def test_match_is_one_to_one_not_one_to_many():
+    # Two right records that both plausibly match one left record must not both
+    # be handed to it — the higher-scoring pair wins, the loser stays unmatched
+    # rather than double-claiming the left record.
+    left = [{"record_id": "L1", "country": "US", "name": "Acme Corp", "city": "NY"}]
+    right = [
+        {"record_id": "R1", "country": "US", "name": "Acme Corp", "city": "NY"},   # exact, score 1.0
+        {"record_id": "R2", "country": "US", "name": "Acme Corpo", "city": "NY"},  # close, lower score
+    ]
+    rules = {
+        "threshold": 0.7,
+        "blocking_key": "country",
+        "compare": [
+            {"field": "name", "similarity": "jaro_winkler", "weight": 0.7},
+            {"field": "city", "similarity": "exact", "weight": 0.3},
+        ],
+    }
+    predicted = M.match(left, right, rules)
+    assert predicted == [("L1", "R1")]  # not both — R2 stays unmatched
+
+
 def test_score_pair_is_weighted_average():
     left = {"name": "Acme", "city": "NY"}
     right = {"name": "Acme", "city": "LA"}

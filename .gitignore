@@ -22,3 +22,7 @@ engagements/madi_onboarding/replay_*.jsonl
 
 # Internal review triage — not part of the published repo
 REVIEW_FINDINGS.md
+
+# Personal working notes — not part of the published repo
+rules.md
+docs/superpowers/

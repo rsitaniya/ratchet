@@ -19,14 +19,16 @@
   },
   "reconcile": {
     "entity_matching": {
-      "precision": 0.0,
-      "recall": 0.0,
-      "f1": 0.0,
-      "predicted": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "predicted": 5,
       "gold": 5
     },
     "fusion": {
       "accuracy": 0.875
     }
-  }
+  },
+  "regressions": [],
+  "regression": false
 }

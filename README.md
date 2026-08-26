@@ -14,18 +14,18 @@ It is a local benchmark harness, not an autonomous deployment product. The onboa
 
 **Problem:** map a new partner’s inconsistent company records into a canonical schema without breaking a source that already works.
 
-**Definition of done:** improve field mapping and normalized-value accuracy against held-out gold, retain the existing source’s score, and keep the evaluator, gold, fixtures, and core scoring machinery outside the implementer’s write path.
+**Definition of done:** improve field mapping and normalized-value recall against held-out gold, retain the existing source’s score, and keep the evaluator, gold, fixtures, and core scoring machinery outside the implementer’s write path.
 
-![Two approved adapter cycles take a new partner source from zero schema and value accuracy to a fully correct result; all values are traceable to committed evaluator receipts.](docs/madi-onboarding-demo.gif)
+![Two approved adapter cycles take a new partner source from zero schema and value recall to a fully correct result; all values are traceable to committed evaluator receipts.](docs/madi-onboarding-demo.gif)
 
 | Metric: new `forbes` source | Baseline | Cycle 1 | Cycle 2 |
 |---|---:|---:|---:|
 | Schema-mapping F1 | [0.00](engagements/madi_onboarding/runs/forbes/00_baseline.evaluate.json) | [0.55](engagements/madi_onboarding/runs/forbes/01_cycle1.evaluate.json) | [1.00](engagements/madi_onboarding/runs/forbes/02_cycle2.evaluate.json) |
-| Value accuracy | [0.00](engagements/madi_onboarding/runs/forbes/00_baseline.evaluate.json) | [0.375](engagements/madi_onboarding/runs/forbes/01_cycle1.evaluate.json) | [1.00](engagements/madi_onboarding/runs/forbes/02_cycle2.evaluate.json) |
+| Value recall | [0.00](engagements/madi_onboarding/runs/forbes/00_baseline.evaluate.json) | [0.375](engagements/madi_onboarding/runs/forbes/01_cycle1.evaluate.json) | [1.00](engagements/madi_onboarding/runs/forbes/02_cycle2.evaluate.json) |
 | Fully-correct rate | [0%](engagements/madi_onboarding/runs/forbes/00_baseline.evaluate.json) | [0%](engagements/madi_onboarding/runs/forbes/01_cycle1.evaluate.json) | [100%](engagements/madi_onboarding/runs/forbes/02_cycle2.evaluate.json) |
 | Existing `dbpedia` source regressed | — | [No](engagements/madi_onboarding/runs/forbes/01_cycle1.evaluate.json) | [No](engagements/madi_onboarding/runs/forbes/02_cycle2.evaluate.json) |
 
-The artifact trail contains the baseline, ranked gaps, adapter patch, patch hash, and evaluator output for every cycle: [run receipts](engagements/madi_onboarding/runs/README.md). Read the [case study](engagements/madi_onboarding/CASE_STUDY.md) for the context, decisions, and limits.
+The artifact trail contains the baseline, ranked gaps, adapter patch, patch hash, and evaluator output for every cycle: [run receipts](engagements/madi_onboarding/runs/MADI_EXAMPLE.md). Read the [case study](engagements/madi_onboarding/CASE_STUDY.md) for the context, decisions, and limits.
 
 ## What the system demonstrates
 
@@ -39,21 +39,23 @@ The artifact trail contains the baseline, ranked gaps, adapter patch, patch hash
 
 ## Run it locally
 
-Requires Python 3.11–3.13. Use an editable install; it is the CI path and makes the engagement package importable.
+Requires Python 3.11–3.13 and [uv](https://pypi.org/project/uv/) (`pip install uv`). `uv sync`
+installs the locked dependency set, including the project itself in editable mode — it is the
+CI path and makes the engagement package importable.
 
 ```bash
-pip install -e ".[dev]"
+uv sync --all-extras --locked
 export FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.toml
-export USAGE_LOG_PATH=$(python scripts/flywheel_config.py --get app.usage_log)
-uvicorn "$(python scripts/flywheel_config.py --get app.module)" --reload
+export USAGE_LOG_PATH=$(uv run python scripts/flywheel_config.py --get app.usage_log)
+uv run uvicorn "$(uv run python scripts/flywheel_config.py --get app.module)" --reload
 ```
 
 In a second terminal, build the replay traffic and inspect the resulting signal:
 
 ```bash
-python engagements/madi_onboarding/to_replay.py --source forbes
-python scripts/simulate.py --run-id local-baseline
-python engagements/madi_onboarding/analyze_integration.py "$USAGE_LOG_PATH" --source forbes --run-id local-baseline
+uv run python engagements/madi_onboarding/to_replay.py --source forbes
+uv run python scripts/simulate.py --run-id local-baseline
+uv run python engagements/madi_onboarding/analyze_integration.py "$USAGE_LOG_PATH" --source forbes --run-id local-baseline
 ```
 
 If you use Claude Code, `/dev-loop` runs one proposed-change cycle with the two approval gates. The complete local procedure is in [SETUP.md](SETUP.md).
@@ -79,7 +81,7 @@ The architectural contracts, control boundaries, test strategy, and non-goals ar
 ## Documentation map
 
 - [Reference engagement](engagements/madi_onboarding/CASE_STUDY.md) — problem, constraints, decisions, outcomes, and limits.
-- [Run receipts](engagements/madi_onboarding/runs/README.md) — raw evidence for the onboarding metrics.
+- [Run receipts](engagements/madi_onboarding/runs/MADI_EXAMPLE.md) — raw evidence for the onboarding metrics.
 - [Delivery system architecture](docs/DELIVERY_SYSTEM.md) — reusable platform design, contracts, controls, and test strategy.
 - [Local runbook](SETUP.md) — install, start, run, and troubleshoot.
 - [Adaptation guide](docs/ADAPTING.md) — point the generic loop at another FastAPI API.

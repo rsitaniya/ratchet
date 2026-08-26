@@ -1,0 +1,21 @@
+--- engagements/madi_onboarding/runs/reconcile/00_baseline.fusion_rules.toml	2026-08-26 23:54:53
++++ engagements/madi_onboarding/runs/reconcile/02_cycle2.fusion_rules.toml	2026-08-26 23:55:34
+@@ -1,8 +1,12 @@
+-# Seed fusion rules — naive. Every attribute is taken from the first source in
+-# priority order (acme_crm). That gets clean names right, but revenue is wrong:
+-# vendor_erp carries the more recent revenue, and the gold fused records use it.
+-# The resulting sub-1.0 fusion accuracy is the signal the loop grows from, by
+-# adding a per-attribute rule. The implementer may edit this file but never
+-# fusion.py or the gold fused records.
++# Cycle 2: per-attribute fusion override. With matching fixed (cycle 1), live
++# /reconcile telemetry on the 5 now-matched pairs ranks fusion conflicts —
++# see 02_cycle2.gaps.txt: "name" and "revenue" both disagree across sources.
++# The seed's source-priority default (acme_crm first) already resolves "name"
++# correctly; it resolves "revenue" wrong. Override just that attribute to
++# prefer vendor_erp, which raises fusion.accuracy from 0.875 to 1.0.
+ default_strategy = "prefer_source"
+ source_priority = ["acme_crm", "vendor_erp"]
++
++[attributes.revenue]
++strategy = "prefer_source"
++source_priority = ["vendor_erp", "acme_crm"]

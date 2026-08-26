@@ -1,0 +1,11 @@
+# Cycle 1: fuzzy name matching. The seed's exact-match on "name" gave recall 0
+# (evaluate.py: entity_matching.f1 = 0.0) because the two sources format the
+# same company differently. Switching to jaro_winkler and lowering the
+# threshold to 0.75 is enough on its own to recover every gold pair (f1 = 1.0,
+# see 01_cycle1.evaluate.json) — no blocking key needed at this fixture scale.
+threshold = 0.75
+
+[[compare]]
+field = "name"
+similarity = "jaro_winkler"
+weight = 1.0

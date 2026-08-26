@@ -1,0 +1,12 @@
+# Seed matcher — intentionally weak. It compares names for an EXACT match, so
+# fuzzy cross-source names ("Nimbus Robotics" vs "Nimbus Robotics, Inc.") never
+# match and recall is ~0. That gap is the signal: the loop grows this file
+# (fuzzy similarity, a blocking key, a tuned threshold) until F1 vs the gold
+# labeled pairs rises. The evaluator scores it; the implementer may edit this
+# file but never matching.py or the gold.
+threshold = 0.9
+
+[[compare]]
+field = "name"
+similarity = "exact"
+weight = 1.0

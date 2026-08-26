@@ -60,7 +60,7 @@ def test_full_forbes_adapter_scores_high_against_gold(tmp_path):
     res = E.evaluate(["forbes"], FIX, adir)
     fb = res["per_source"]["forbes"]
     assert fb["schema_f1"] == 1.0
-    assert fb["value_accuracy"] == 1.0
+    assert fb["value_recall"] == 1.0
     assert fb["fully_correct_rate"] == 1.0  # value normalizers all correct vs gold
 
 

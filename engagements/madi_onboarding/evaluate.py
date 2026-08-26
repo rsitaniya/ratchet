@@ -16,7 +16,7 @@ stops the loop from "improving" by weakening its own test.
 
 Metrics (none satisfiable by returning HTTP 200):
   - schema_f1          : F1 of predicted vs gold field correspondences
-  - value_accuracy     : recall of gold values — share of gold attribute values
+  - value_recall       : recall of gold values — share of gold attribute values
                          the adapters reproduce exactly (denominator is gold)
   - integrated_rate    : share of records with all required attributes produced
   - fully_correct_rate : share of records whose every gold attribute matches
@@ -28,7 +28,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
+
+# Run directly as `python .../evaluate.py` (as documented above), a script has
+# no package context, so the absolute import below can't resolve even with the
+# project installed — put the repo root on sys.path first. `-m` and normal
+# imports already have __package__ set and skip this.
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from engagements.madi_onboarding import adapters as A
 
@@ -85,7 +93,7 @@ def evaluate_source(source: str, fixtures_dir: Path, adapters_dir: Path) -> dict
         "records": n,
         "schema_f1": round(schema_f1, 4),
         # Recall of gold values: correct ÷ number of gold attribute values.
-        "value_accuracy": round(correct_values / total_values, 4) if total_values else 0.0,
+        "value_recall": round(correct_values / total_values, 4) if total_values else 0.0,
         "integrated_rate": round(integrated / n, 4) if n else 0.0,
         "fully_correct_rate": round(fully_correct / n, 4) if n else 0.0,
     }

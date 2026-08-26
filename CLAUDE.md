@@ -13,16 +13,16 @@ evaluator** the loop is forbidden to edit. It selects itself purely via
 
 ```bash
 # 1. Install dependencies
-pip install -e ".[dev]"
+uv sync --all-extras --locked
 
 # 2. Point the loop at the reference engagement and start its API
 export FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.toml
-export USAGE_LOG_PATH=$(python scripts/flywheel_config.py --get app.usage_log)
-uvicorn "$(python scripts/flywheel_config.py --get app.module)" --reload
+export USAGE_LOG_PATH=$(uv run python scripts/flywheel_config.py --get app.usage_log)
+uv run uvicorn "$(uv run python scripts/flywheel_config.py --get app.module)" --reload
 
 # 3. Build the replay traffic the config points at (in a second terminal),
 #    then run the simulator
-python engagements/madi_onboarding/to_replay.py --source forbes
+uv run python engagements/madi_onboarding/to_replay.py --source forbes
 /simulate
 
 # 4. Run one full agentic development cycle
@@ -37,14 +37,14 @@ python engagements/madi_onboarding/to_replay.py --source forbes
 | File | Purpose |
 |------|---------|
 | `flywheel.toml` | **The only seam between the loop and a specific API** — app module, version files, signal params. One per app; the shipped example is `engagements/madi_onboarding/flywheel.toml` |
-| `edge_cases.json` | Correlated domain edge cases for the simulator (optional; grown by the loop each cycle) |
+| `edge_cases.json` | Correlated domain edge cases for the simulator (optional; grown by the loop each cycle). One per app; MaDI onboarding ships without one — the simulator falls back to schema-driven synthesis |
 | `usage_log.jsonl` | Runtime product signal (gitignored; auto-created by API traffic) |
 | `scripts/simulate.py` | Schema-driven simulator (called by /simulate skill) |
 | `scripts/analyze_usage.py` | Turns the raw log into the signal report the feature-suggester reads |
 | `scripts/flywheel_config.py` | Loads the active `flywheel.toml` (via `FLYWHEEL_CONFIG`); `--get KEY` accessor for shell steps |
 | `scripts/check_protected_paths.py` | Rejects any patch touching held-out evaluators/gold/fixtures (`[protected].paths`) |
 | `engagements/madi_onboarding/` | Reference engagement: partner-data onboarding, ingest app, adapters, protected evaluator, case study |
-| `tests/` | FastAPI TestClient tests — run with `pytest tests/ -v` |
+| `tests/` | FastAPI TestClient tests — run with `uv run pytest tests/ -v` |
 | `CHANGELOG.md` | Updated each cycle by the orchestrator |
 | `docs/ADAPTING.md` | How to point the loop at your own API |
 | `.claude/agents/` | Subagent definitions (read-only — orchestrator writes) |

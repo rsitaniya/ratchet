@@ -46,7 +46,7 @@ An evaluator must emit JSON and accept `--baseline FILE` when regression matters
 ## Acceptance check
 
 1. Start the API with the active configuration.
-2. Run `python scripts/simulate.py` with no hand-written endpoint list.
+2. Run `uv run python scripts/simulate.py` with no hand-written endpoint list.
 3. Confirm the usage log contains new endpoint traffic and unknown-path 404s.
 4. Add a schema-visible endpoint and repeat; the simulator must exercise it without code changes.
 5. If using an evaluator, prove a known-wrong change lowers its score and a protected-path edit is rejected.

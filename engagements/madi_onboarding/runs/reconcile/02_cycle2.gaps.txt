@@ -1,0 +1,6 @@
+── Entity matching ─────────────────────────────────────
+  match rate: 71.4%  (matched=5, unmatched=2)
+
+── Fusion conflicts (rank by conflicting pairs) ────────
+     5 pairs  name
+     5 pairs  revenue

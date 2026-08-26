@@ -1,0 +1,12 @@
+# Cycle 2: per-attribute fusion override. With matching fixed (cycle 1), live
+# /reconcile telemetry on the 5 now-matched pairs ranks fusion conflicts —
+# see 02_cycle2.gaps.txt: "name" and "revenue" both disagree across sources.
+# The seed's source-priority default (acme_crm first) already resolves "name"
+# correctly; it resolves "revenue" wrong. Override just that attribute to
+# prefer vendor_erp, which raises fusion.accuracy from 0.875 to 1.0.
+default_strategy = "prefer_source"
+source_priority = ["acme_crm", "vendor_erp"]
+
+[attributes.revenue]
+strategy = "prefer_source"
+source_priority = ["vendor_erp", "acme_crm"]

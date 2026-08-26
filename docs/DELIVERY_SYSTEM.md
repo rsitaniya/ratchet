@@ -80,12 +80,17 @@ The [reference engagement](../engagements/madi_onboarding/CASE_STUDY.md) exercis
 ## Engineering checks
 
 ```bash
-pip install -e ".[dev]"
-pytest tests/ -q
-ruff check .
+uv sync --all-extras --locked
+uv run pytest tests/ -q
+uv run ruff check .
 ```
 
-CI runs those checks on Python 3.11, 3.12, and 3.13. It also boots the example API, exercises it through the simulator with and without root configuration, and checks the MaDI engagement’s evaluator invariants. See [CI](../.github/workflows/ci.yml) for the executable contract.
+CI runs those checks on Python 3.11, 3.12, and 3.13 in one job. A second job boots the MaDI
+onboarding engagement itself, replays its `forbes` fixture and ranks the resulting integration
+gaps, then — with `FLYWHEEL_CONFIG` unset — re-runs the simulator against the same live app to
+prove zero-domain-config discovery, checks the evaluator's regression and progression invariants,
+and confirms the protected-path guard rejects plain, escaped, and symlink evaluator edits. See
+[CI](../.github/workflows/ci.yml) for the executable contract.
 
 ## Non-goals
 

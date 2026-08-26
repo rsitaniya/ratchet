@@ -1,0 +1,22 @@
+--- engagements/madi_onboarding/runs/reconcile/00_baseline.matching_rules.toml	2026-08-26 23:54:53
++++ engagements/madi_onboarding/runs/reconcile/01_cycle1.matching_rules.toml	2026-08-26 23:55:34
+@@ -1,12 +1,11 @@
+-# Seed matcher — intentionally weak. It compares names for an EXACT match, so
+-# fuzzy cross-source names ("Nimbus Robotics" vs "Nimbus Robotics, Inc.") never
+-# match and recall is ~0. That gap is the signal: the loop grows this file
+-# (fuzzy similarity, a blocking key, a tuned threshold) until F1 vs the gold
+-# labeled pairs rises. The evaluator scores it; the implementer may edit this
+-# file but never matching.py or the gold.
+-threshold = 0.9
++# Cycle 1: fuzzy name matching. The seed's exact-match on "name" gave recall 0
++# (evaluate.py: entity_matching.f1 = 0.0) because the two sources format the
++# same company differently. Switching to jaro_winkler and lowering the
++# threshold to 0.75 is enough on its own to recover every gold pair (f1 = 1.0,
++# see 01_cycle1.evaluate.json) — no blocking key needed at this fixture scale.
++threshold = 0.75
+ 
+ [[compare]]
+ field = "name"
+-similarity = "exact"
++similarity = "jaro_winkler"
+ weight = 1.0

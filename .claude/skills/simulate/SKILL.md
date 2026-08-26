@@ -15,13 +15,13 @@ by `$FLYWHEEL_CONFIG`, else the repo-root file) — nothing here is app-specific
 ### 1. Verify the server is running
 
 ```bash
-BASE_URL=$(python scripts/flywheel_config.py --get app.base_url)
+BASE_URL=$(uv run python scripts/flywheel_config.py --get app.base_url)
 curl -s "$BASE_URL/health"
 ```
 
 If the server is not running, tell the user:
 > The API server is not running. Start it with:
-> `export USAGE_LOG_PATH=$(python scripts/flywheel_config.py --get app.usage_log); uvicorn "$(python scripts/flywheel_config.py --get app.module)" --reload`
+> `export USAGE_LOG_PATH=$(uv run python scripts/flywheel_config.py --get app.usage_log); uvicorn "$(uv run python scripts/flywheel_config.py --get app.module)" --reload`
 > Then invoke `/simulate` again.
 
 Do not proceed if the server is unreachable.
@@ -29,8 +29,8 @@ Do not proceed if the server is unreachable.
 ### 2. Show the current schema paths
 
 ```bash
-BASE_URL=$(python scripts/flywheel_config.py --get app.base_url)
-curl -s "$BASE_URL/openapi.json" | python3 -c "
+BASE_URL=$(uv run python scripts/flywheel_config.py --get app.base_url)
+curl -s "$BASE_URL/openapi.json" | uv run python3 -c "
 import json, sys
 schema = json.load(sys.stdin)
 print('API title:', schema['info']['title'], 'v' + schema['info']['version'])
@@ -41,7 +41,7 @@ print('Paths:', list(schema['paths'].keys()))
 ### 3. Run the simulator
 
 ```bash
-python scripts/simulate.py
+uv run python scripts/simulate.py
 ```
 
 This script (no args → base URL and request count come from config):
@@ -62,7 +62,7 @@ After the simulator finishes, report:
 - Current line count in the usage log
 
 ```bash
-LOG=$(python scripts/flywheel_config.py --get app.usage_log)
+LOG=$(uv run python scripts/flywheel_config.py --get app.usage_log)
 wc -l "$LOG" 2>/dev/null || echo "usage log not yet created: $LOG"
 ```
 

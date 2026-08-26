@@ -12,9 +12,12 @@ adapter change, and (after human approval + a held-out evaluation) grows the
 adapter until the source integrates — without regressing already-onboarded ones.
 
 Telemetry is structured and privacy-preserving: it records field NAMES, stages,
-and error codes plus a HASHED record id — never raw customer values.
+and error codes plus a KEYED-HMAC record id — never raw customer values, and
+never a value an attacker who knows (or guesses) the id space can recompute
+without the deployment's own key.
 """
 import hashlib
+import hmac
 import json
 import os
 import sys
@@ -63,8 +66,16 @@ class IngestRequest(BaseModel):
     record: dict = Field(..., description="One raw partner record (may include a 'record_id')")
 
 
+_DEV_HASH_KEY = b"dev-only-key-not-a-secret-set-RECORD_ID_HASH_KEY-in-any-real-deployment"
+
+
 def _hash_id(record_id) -> str:
-    return hashlib.sha256(str(record_id).encode()).hexdigest()[:12]
+    """Keyed HMAC, not a bare hash: an unkeyed SHA-256 of a small, guessable id
+    space (order numbers, SKUs, short customer ids) is a dictionary attack away
+    from recovering exactly which telemetry row is which real record — keying
+    it means recovery also requires the deployment's own secret."""
+    key = os.environ.get("RECORD_ID_HASH_KEY", "").encode() or _DEV_HASH_KEY
+    return hmac.new(key, str(record_id).encode(), hashlib.sha256).hexdigest()[:12]
 
 
 def _emit(events: list[dict]) -> None:

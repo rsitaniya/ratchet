@@ -21,18 +21,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: pip
+
+      - name: Install uv
+        run: pip install uv
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+        run: uv sync --all-extras --locked
 
       - name: Lint
-        run: ruff check .
+        run: uv run ruff check .
 
       - name: Test
-        run: pytest tests/ -v
+        run: uv run pytest tests/ -v
 
   madi-engagement:
     name: madi onboarding engagement (oracle-backed)
@@ -45,36 +45,51 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
+
+      - name: Install uv
+        run: pip install uv
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+        run: uv sync --all-extras --locked
 
       # The second app runs off the SAME generic loop, selected purely by config.
       - name: Build replay and start the ingest app (via the config accessor)
         run: |
-          export USAGE_LOG_PATH=$(python scripts/flywheel_config.py --get app.usage_log)
+          export USAGE_LOG_PATH=$(uv run python scripts/flywheel_config.py --get app.usage_log)
           echo "USAGE_LOG_PATH=$USAGE_LOG_PATH" >> "$GITHUB_ENV"
-          python engagements/madi_onboarding/to_replay.py --source forbes
-          uvicorn "$(python scripts/flywheel_config.py --get app.module)" --port 8000 &
+          uv run python engagements/madi_onboarding/to_replay.py --source forbes
+          uv run uvicorn "$(uv run python scripts/flywheel_config.py --get app.module)" --port 8000 &
           for _ in $(seq 1 40); do curl -sf http://localhost:8000/health && break; sleep 0.25; done
 
       - name: Replay the new source and rank integration gaps
         run: |
-          python scripts/simulate.py --run-id ci-baseline
-          python engagements/madi_onboarding/analyze_integration.py "$USAGE_LOG_PATH" --source forbes
+          uv run python scripts/simulate.py --run-id ci-baseline
+          uv run python engagements/madi_onboarding/analyze_integration.py "$USAGE_LOG_PATH" --source forbes
 
       # Proves the claim the whole project rests on: with FLYWHEEL_CONFIG unset,
       # flywheel_config.py falls back to defaults (no replay file, no edge
       # cases, no signals declared), and the simulator still discovers and
       # exercises this real, non-trivial app's endpoints from /openapi.json
       # alone. Most synthesized requests 422 (schema-random values don't match
-      # a real record) — that's expected and fine; simulate.py always exits 0,
-      # so only a crash or zero-operations-discovered would fail this step.
+      # a real record) — that's expected and fine; simulate.py always exits 0
+      # regardless of HTTP status, so it cannot fail this step on its own. What
+      # DOES fail it: any "EXC"-tagged line (a transport failure — fire() caught
+      # an exception, not a legitimate HTTP error status), or either /ingest or
+      # /reconcile never actually reaching the live app under this run's traffic.
       - name: Verify zero-domain-config discovery against the live engagement app
-        run: env -u FLYWHEEL_CONFIG python scripts/simulate.py http://localhost:8000 5
+        run: |
+          OUT=$(env -u FLYWHEEL_CONFIG uv run python scripts/simulate.py http://localhost:8000 5 --run-id ci-zero-config)
+          echo "$OUT"
+          if echo "$OUT" | grep -q '\] EXC '; then
+            echo "ERROR: a request failed at the transport level (EXC), not just a legitimate HTTP error status"
+            exit 1
+          fi
+          for path in /ingest /reconcile; do
+            if ! grep -q "\"run_id\": \"ci-zero-config\".*\"path\": \"$path\"\|\"path\": \"$path\".*\"run_id\": \"ci-zero-config\"" "$USAGE_LOG_PATH"; then
+              echo "ERROR: $path never landed in usage-log telemetry for run_id=ci-zero-config"
+              exit 1
+            fi
+          done
 
       # The oracle, tested as invariants — not frozen seed values. Pinning the
       # committed metrics to their seed would make a successful loop improvement
@@ -83,8 +98,8 @@ jobs:
       # converged rules beat the seed (the property the loop depends on).
       - name: Evaluate the oracle (no-regression + progression)
         run: |
-          python engagements/madi_onboarding/evaluate.py > /tmp/eval.json
-          python - <<'PY'
+          uv run python engagements/madi_onboarding/evaluate.py > /tmp/eval.json
+          uv run python - <<'PY'
           import json, tempfile
           from pathlib import Path
           from engagements.madi_onboarding import evaluate as E
@@ -132,7 +147,7 @@ jobs:
           printf 'diff --git "a/engagements/madi_onboarding/\\145valuate.py" "b/engagements/madi_onboarding/\\145valuate.py"\n--- "a/engagements/madi_onboarding/\\145valuate.py"\n+++ "b/engagements/madi_onboarding/\\145valuate.py"\n@@ -0,0 +1 @@\n+x\n' > /tmp/escaped.patch
           printf 'diff --git a/shim b/shim\nnew file mode 120000\nindex 0000000..d488960\n--- /dev/null\n+++ b/shim\n@@ -0,0 +1 @@\n+engagements/madi_onboarding/fixtures\n' > /tmp/symlink.patch
           for p in /tmp/plain.patch /tmp/escaped.patch /tmp/symlink.patch; do
-            if python scripts/check_protected_paths.py "$p"; then
+            if uv run python scripts/check_protected_paths.py "$p"; then
               echo "ERROR: $p was NOT rejected"; exit 1
             fi
             echo "correctly rejected: $p"
@@ -142,4 +157,4 @@ jobs:
       # verifies git blob SHAs. Non-fatal so external availability never reds CI.
       - name: Verify pinned downloader (network, non-fatal)
         continue-on-error: true
-        run: python engagements/madi_onboarding/download_data.py
+        run: uv run python engagements/madi_onboarding/download_data.py

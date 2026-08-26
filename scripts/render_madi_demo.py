@@ -38,16 +38,16 @@ def main() -> None:
     frames = [
         frame("Partner data onboarding", "Baseline held-out evaluation", "#7dd3fc", [
             "forbes source", f"Schema-mapping F1       {metrics[0]['schema_f1']:.2f}",
-            f"Value accuracy          {metrics[0]['value_accuracy']:.2f}", "Integrated records      0 / 6",
+            f"Value recall            {metrics[0]['value_recall']:.2f}", "Integrated records      0 / 6",
         ], "Receipt: 00_baseline.evaluate.json", "#0b1020"),
         frame("Cycle 1: map required fields", "Signal ranked by affected records", "#fbbf24", [
             "Approved adapter change", f"Schema-mapping F1       {metrics[1]['schema_f1']:.4f}",
-            f"Value accuracy          {metrics[1]['value_accuracy']:.3f}", "Integrated records      6 / 6",
+            f"Value recall            {metrics[1]['value_recall']:.3f}", "Integrated records      6 / 6",
             "dbpedia regression      false",
         ], "Receipts: 01_cycle1.gaps.txt + 01_cycle1.evaluate.json", "#111a2e"),
         frame("Cycle 2: complete normalization", "sales to revenue; money and country rules", "#86efac", [
             "Held-out evaluator", f"Schema-mapping F1       {metrics[2]['schema_f1']:.2f}",
-            f"Value accuracy          {metrics[2]['value_accuracy']:.2f}", "Fully-correct records   6 / 6",
+            f"Value recall            {metrics[2]['value_recall']:.2f}", "Fully-correct records   6 / 6",
             "dbpedia regression      false",
         ], "Receipt: 02_cycle2.evaluate.json", "#10231e"),
     ]

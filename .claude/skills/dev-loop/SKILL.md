@@ -37,7 +37,7 @@ Gate-2 regression check in STEP 6 possible — without a baseline captured *befo
 the patch lands, there is nothing to compare against:
 
 ```bash
-EVALUATOR=$(python scripts/flywheel_config.py --get app.evaluator)
+EVALUATOR=$(uv run python scripts/flywheel_config.py --get app.evaluator)
 rm -f .dev_loop_baseline.json
 if [ -n "$EVALUATOR" ]; then
   eval "$EVALUATOR" > .dev_loop_baseline.json   # eval, not bare $EVALUATOR — zsh does not word-split unquoted vars
@@ -51,7 +51,7 @@ not a repo artifact.
 Ensure the API server is running:
 
 ```bash
-BASE_URL=$(python scripts/flywheel_config.py --get app.base_url)
+BASE_URL=$(uv run python scripts/flywheel_config.py --get app.base_url)
 curl -s "$BASE_URL/health" || echo "SERVER DOWN"
 ```
 
@@ -59,21 +59,21 @@ If the server is down, start it (exporting the config's usage-log path so the
 server, simulator, and analyzer all agree on one file):
 
 ```bash
-export USAGE_LOG_PATH=$(python scripts/flywheel_config.py --get app.usage_log)
-uvicorn "$(python scripts/flywheel_config.py --get app.module)" --reload &
+export USAGE_LOG_PATH=$(uv run python scripts/flywheel_config.py --get app.usage_log)
+uv run uvicorn "$(uv run python scripts/flywheel_config.py --get app.module)" --reload &
 sleep 2
 ```
 
 Run the simulator (no args → it reads the base URL and request count from config):
 
 ```bash
-python scripts/simulate.py
+uv run python scripts/simulate.py
 ```
 
 Show the current line count in the log:
 
 ```bash
-wc -l "$(python scripts/flywheel_config.py --get app.usage_log)"
+wc -l "$(uv run python scripts/flywheel_config.py --get app.usage_log)"
 ```
 
 ---
@@ -86,10 +86,10 @@ comes from config (`app.analyzer`), defaulting to the generic HTTP analyzer; an
 engagement points it at its own domain gap-ranker:
 
 ```bash
-USAGE_LOG=$(python scripts/flywheel_config.py --get app.usage_log)
-ANALYZER=$(python scripts/flywheel_config.py --get app.analyzer)   # empty → generic
-REPORT=$(${ANALYZER:-python scripts/analyze_usage.py} "$USAGE_LOG")
-python scripts/flywheel_config.py --get app.module   # e.g. myservice.api:app → myservice/api.py
+USAGE_LOG=$(uv run python scripts/flywheel_config.py --get app.usage_log)
+ANALYZER=$(uv run python scripts/flywheel_config.py --get app.analyzer)   # empty → generic
+REPORT=$(${ANALYZER:-uv run python scripts/analyze_usage.py} "$USAGE_LOG")
+uv run python scripts/flywheel_config.py --get app.module   # e.g. myservice.api:app → myservice/api.py
 ```
 
 Invoke the **feature-suggester** subagent, passing the report inline:
@@ -156,7 +156,7 @@ EDGE_CASES: {"<op-or-feature>": [{"a": .., "b": ..}, ...]}
 1. **Code + test patch** — Extract the `PATCH:` diff into a temp file.
    - **Protected-path check (do this BEFORE `git apply --check`).** Run the deterministic checker on the patch:
      ```bash
-     python scripts/check_protected_paths.py <tempfile>
+     uv run python scripts/check_protected_paths.py <tempfile>
      ```
      Exit 0 = clean, proceed. **Exit 2 = the patch touches a protected path** (held-out evaluator, gold labels, fixtures, scoring — read from `[protected].paths` in the active config). **REJECT the patch** — do not apply it — and ask the implementer to resubmit without touching protected files. This is what stops the loop from gaming its own test. Apps that declare no `[protected]` paths always pass.
    - Then run `git apply --check <tempfile>`. If it passes, run `git apply <tempfile>`. If it fails, inspect the failure and either repair the diff directly or ask the implementer for a corrected unified diff.
@@ -172,13 +172,13 @@ EDGE_CASES: {"<op-or-feature>": [{"a": .., "b": ..}, ...]}
 ## STEP 5 — Run tests
 
 ```bash
-pytest tests/ -v
+uv run pytest tests/ -v
 ```
 
 **Tests must pass before continuing.** If tests fail:
 1. Read the error output carefully.
 2. Fix the issue directly via Edit (do not re-invoke the implementer subagent for small fixes).
-3. Re-run pytest until all tests pass.
+3. Re-run `uv run pytest` until all tests pass.
 
 ---
 
@@ -197,7 +197,7 @@ The subagent returns either `NO_CHANGES_NEEDED` or a `PATCH:` unified diff.
 **Orchestrator applies the patch under the SAME guard as every other patch —
 a docs patch is not exempt:**
 - If it returns `PATCH:`, extract the diff into a temp file and run
-  `python scripts/check_protected_paths.py <tempfile>` FIRST. **Exit 2 = the patch
+  `uv run python scripts/check_protected_paths.py <tempfile>` FIRST. **Exit 2 = the patch
   touches a protected path → REJECT it** and ask docs-updater to resubmit. On
   exit 0, run `git apply --check <tempfile>` then `git apply <tempfile>`.
 - If `git apply --check` fails, repair the metadata patch directly or ask
@@ -215,7 +215,7 @@ the actual diff are what catch that.
 
 1. **Run the app's evaluator, if it declares one, against the pre-cycle baseline STEP 1 captured.**
    ```bash
-   EVALUATOR=$(python scripts/flywheel_config.py --get app.evaluator)
+   EVALUATOR=$(uv run python scripts/flywheel_config.py --get app.evaluator)
    if [ -n "$EVALUATOR" ]; then
      if [ -s .dev_loop_baseline.json ]; then
        eval "$EVALUATOR --baseline .dev_loop_baseline.json"
@@ -244,19 +244,19 @@ diff; for an engagement with a protected evaluator it is the real safety boundar
 ## STEP 7 — Restart server to reload new routes
 
 ```bash
-APP=$(python scripts/flywheel_config.py --get app.module)
+APP=$(uv run python scripts/flywheel_config.py --get app.module)
 pkill -f "uvicorn $APP" 2>/dev/null || true
 sleep 1
-export USAGE_LOG_PATH=$(python scripts/flywheel_config.py --get app.usage_log)
-uvicorn "$APP" --reload &
+export USAGE_LOG_PATH=$(uv run python scripts/flywheel_config.py --get app.usage_log)
+uv run uvicorn "$APP" --reload &
 sleep 2
 ```
 
 Verify the new endpoint/operation appears in the live schema:
 
 ```bash
-BASE_URL=$(python scripts/flywheel_config.py --get app.base_url)
-curl -s "$BASE_URL/openapi.json" | python3 -c "
+BASE_URL=$(uv run python scripts/flywheel_config.py --get app.base_url)
+curl -s "$BASE_URL/openapi.json" | uv run python3 -c "
 import json, sys
 schema = json.load(sys.stdin)
 print('Paths:', list(schema['paths'].keys()))
@@ -272,7 +272,7 @@ for name, comp in schema.get('components', {}).get('schemas', {}).items():
 ## STEP 8 — Verify loop closure
 
 ```bash
-python scripts/simulate.py "$(python scripts/flywheel_config.py --get app.base_url)" 5
+uv run python scripts/simulate.py "$(uv run python scripts/flywheel_config.py --get app.base_url)" 5
 ```
 
 Confirm the new feature — **whatever its shape** — shows up in the simulator's discovery
@@ -318,5 +318,5 @@ to stop.
 - **Every applied patch — code, docs, anything — passes `check_protected_paths.py` before `git apply`.** No patch is exempt. The evaluator and Gate 2 run only after all edits are applied, so they judge the final tree.
 - **The implementer may never touch protected paths** (held-out evaluators, gold, fixtures, scoring). The orchestrator rejects such patches before applying (STEP 4.1). This is enforcement, not etiquette, for the implementer specifically: it holds no Bash, so its diff is its only mutation path, and every diff passes the guard. The orchestrator's own direct edits (STEP 4.3-4.5: CHANGELOG, version files, `edge_cases.json`) skip the diff-based guard — those three files are never protected-path candidates in any shipped config, so there is nothing for that skip to reach, but it means "every write is guarded" is a claim about the implementer's contract, not a kernel-level boundary on the orchestrator itself.
 - **Continuous mode uses Claude Code's built-in `/loop` runner.** Use `/loop /dev-loop`; stop with Ctrl+C.
-- **Do not skip the test step.** A feature is not shipped until `pytest tests/ -v` passes.
+- **Do not skip the test step.** A feature is not shipped until `uv run pytest tests/ -v` passes.
 - **Do not truncate the usage log** — historical entries are the signal for future cycles.
