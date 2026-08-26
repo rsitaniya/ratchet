@@ -44,7 +44,7 @@ if [ -n "$EVALUATOR" ]; then
 fi
 ```
 
-Empty for apps without one (e.g. the calculator) — the file is simply absent and
+Empty for apps without one — the file is simply absent and
 STEP 6 skips the comparison. `.dev_loop_baseline.json` is gitignored scratch state,
 not a repo artifact.
 
@@ -89,7 +89,7 @@ engagement points it at its own domain gap-ranker:
 USAGE_LOG=$(python scripts/flywheel_config.py --get app.usage_log)
 ANALYZER=$(python scripts/flywheel_config.py --get app.analyzer)   # empty → generic
 REPORT=$(${ANALYZER:-python scripts/analyze_usage.py} "$USAGE_LOG")
-python scripts/flywheel_config.py --get app.module   # e.g. app.main:app → app/main.py
+python scripts/flywheel_config.py --get app.module   # e.g. myservice.api:app → myservice/api.py
 ```
 
 Invoke the **feature-suggester** subagent, passing the report inline:
@@ -158,11 +158,11 @@ EDGE_CASES: {"<op-or-feature>": [{"a": .., "b": ..}, ...]}
      ```bash
      python scripts/check_protected_paths.py <tempfile>
      ```
-     Exit 0 = clean, proceed. **Exit 2 = the patch touches a protected path** (held-out evaluator, gold labels, fixtures, scoring — read from `[protected].paths` in the active config). **REJECT the patch** — do not apply it — and ask the implementer to resubmit without touching protected files. This is what stops the loop from gaming its own test. Apps that declare no `[protected]` paths (e.g. the calculator) always pass.
+     Exit 0 = clean, proceed. **Exit 2 = the patch touches a protected path** (held-out evaluator, gold labels, fixtures, scoring — read from `[protected].paths` in the active config). **REJECT the patch** — do not apply it — and ask the implementer to resubmit without touching protected files. This is what stops the loop from gaming its own test. Apps that declare no `[protected]` paths always pass.
    - Then run `git apply --check <tempfile>`. If it passes, run `git apply <tempfile>`. If it fails, inspect the failure and either repair the diff directly or ask the implementer for a corrected unified diff.
 2. **Test path sanity** — Confirm `TEST_FILE:` exists after the patch and is under `tests/`.
 3. **Changelog (version-per-cycle)** — Determine the next minor version (read the current `version=` in the app module named by `[app].module` in `flywheel.toml`; bump the minor, e.g. 0.3.0 → 0.4.0). In `CHANGELOG.md`, insert a new `## [<new-version>] - <today>` section directly under `## [Unreleased]` and put the `CHANGELOG:` entry under its `### Added`. Leave `## [Unreleased]` empty.
-4. **Version bump** — Use **Edit** to update the version string in every file listed in `[app].version_files` in `flywheel.toml` (by default: `app/main.py`, `pyproject.toml`, `CHANGELOG.md`) so the running app's version always matches the latest CHANGELOG release.
+4. **Version bump** — Use **Edit** to update the version string in every file listed in `[app].version_files` in the active `flywheel.toml` so the running app's version always matches the latest CHANGELOG release.
 5. **Simulator edge cases** — Parse `EDGE_CASES:` (JSON) → use **Edit** to merge the new entry into the JSON file named by `[simulator].edge_cases` in `flywheel.toml` (by default `edge_cases.json`), so the next simulator run exercises the new feature intelligently (not just with random inputs). Keys starting with `_` are documentation and are ignored by the loader.
 
 > The docs INSIDE the API (`/openapi.json`) are handled separately by the docs-updater in STEP 5.5. STEPs 3–5 above keep the *project* docs (CHANGELOG, version, simulator) in sync; STEP 5.5 keeps the *API* docs in sync. Both must happen every cycle.
@@ -224,7 +224,7 @@ the actual diff are what catch that.
      fi
    fi
    ```
-   Empty `app.evaluator` → no evaluator declared (e.g. the calculator) — skip to step 2.
+   Empty `app.evaluator` → no evaluator declared — skip to step 2.
    Capture the machine-readable result. **If it reports `"regression": true`, this is a
    hard failure — treat it exactly like a failing test, not something to note and
    proceed past.** Do not show it to the human as a pass. Go straight to Revert
@@ -235,8 +235,8 @@ the actual diff are what catch that.
 2. **Show the human the exact change.** Present the diff hash (`git diff | git hash-object --stdin`), the changed-file list, the diff (or a tight summary if large), and the evaluator result. Use AskUserQuestion: "Keep this patch? (Gate 2)" with options Keep / Revert.
 3. **On Revert:** restore the pre-cycle tree, report why, and end the cycle cleanly. Because STEP 1 refused to start on a dirty tree, everything uncommitted belongs to this cycle, so `git checkout -- .` followed by `git clean -fd` is safe — gitignored runtime files (e.g. the usage log) are preserved. **On Keep:** proceed.
 
-Do NOT proceed past this gate without an explicit Keep. For the calculator
-(no evaluator, no `[protected]` paths) this is a quick visual confirm of the
+Do NOT proceed past this gate without an explicit Keep. For an app with no
+evaluator and no `[protected]` paths this is a quick visual confirm of the
 diff; for an engagement with a protected evaluator it is the real safety boundary.
 
 ---

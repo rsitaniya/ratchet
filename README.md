@@ -8,7 +8,7 @@
 
 The reference engagement onboards a new partner data source. The loop reads structured integration failures, proposes a bounded adapter change, runs an evaluator whose gold labels and scorer are protected from the planner, and requires approval before the tested patch lands.
 
-It is a local benchmark harness, not an autonomous deployment product. The calculator is the bundled example app; the onboarding engagement is the primary evidence.
+It is a local benchmark harness, not an autonomous deployment product. The onboarding engagement below is both the primary evidence and the only bundled example.
 
 ## Reference engagement: partner-data onboarding
 
@@ -43,17 +43,20 @@ Requires Python 3.11–3.13. Use an editable install; it is the CI path and make
 
 ```bash
 pip install -e ".[dev]"
-uvicorn app.main:app --reload
+export FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.toml
+export USAGE_LOG_PATH=$(python scripts/flywheel_config.py --get app.usage_log)
+uvicorn "$(python scripts/flywheel_config.py --get app.module)" --reload
 ```
 
-In a second terminal, generate and inspect API signal:
+In a second terminal, build the replay traffic and inspect the resulting signal:
 
 ```bash
-python scripts/simulate.py http://localhost:8000 30
-python scripts/analyze_usage.py usage_log.jsonl
+python engagements/madi_onboarding/to_replay.py --source forbes
+python scripts/simulate.py --run-id local-baseline
+python engagements/madi_onboarding/analyze_integration.py "$USAGE_LOG_PATH" --source forbes --run-id local-baseline
 ```
 
-If you use Claude Code, `/dev-loop` runs one proposed-change cycle with the two approval gates. The complete local procedure, including the MaDI engagement, is in [SETUP.md](SETUP.md).
+If you use Claude Code, `/dev-loop` runs one proposed-change cycle with the two approval gates. The complete local procedure is in [SETUP.md](SETUP.md).
 
 ## How the loop works
 
@@ -83,7 +86,6 @@ The architectural contracts, control boundaries, test strategy, and non-goals ar
 - [Security model](SECURITY.md) — threat model, enforced boundaries, and residual risks.
 - [Change history](CHANGELOG.md) — append-only release history.
 - [Data license notice](engagements/madi_onboarding/DATA_LICENSE_NOTICE.md) — MaDI-Bench data terms and reproducibility boundaries.
-- [Long-form essay](docs/blog/self-shipping-api.md) — optional explanation of the calculator example.
 
 ## License
 

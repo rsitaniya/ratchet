@@ -1,6 +1,6 @@
 # Local runbook
 
-**Reader:** a practitioner running the bundled example or the reference engagement locally.
+**Reader:** a practitioner running the reference engagement locally.
 
 ## Prerequisites
 
@@ -15,23 +15,6 @@ ruff check .
 ```
 
 Expected result: the test suite passes and Ruff reports no findings.
-
-## Example API: create signal
-
-Terminal 1:
-
-```bash
-uvicorn app.main:app --reload
-```
-
-Terminal 2:
-
-```bash
-python scripts/simulate.py http://localhost:8000 30
-python scripts/analyze_usage.py usage_log.jsonl
-```
-
-The simulator reads `/openapi.json`, exercises the available endpoints, and writes only product-endpoint telemetry. Stop the server with `Ctrl+C`.
 
 ## Reference engagement: replay partner onboarding
 

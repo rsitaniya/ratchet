@@ -6,8 +6,8 @@ a config edit rather than a code edit. See docs/ADAPTING.md.
 
 Which config file is active is chosen by (in order): an explicit path argument,
 the FLYWHEEL_CONFIG environment variable, then the repo-root flywheel.toml. This
-lets a second app (e.g. an engagement under engagements/) run its own loop
-without disturbing the calculator's. Path-valued keys are resolved against the
+lets more than one app (e.g. engagements under engagements/) run its own loop
+without disturbing another's. Path-valued keys are resolved against the
 config file's own directory, so an engagement config refers to its own files.
 
 Every value has a working default: a missing flywheel.toml is not an error.
@@ -28,7 +28,7 @@ DEFAULT_CONFIG_PATH = REPO_ROOT / "flywheel.toml"
 
 DEFAULTS: dict[str, dict[str, Any]] = {
     "app": {
-        "module": "app.main:app",
+        "module": "myservice.api:app",
         "base_url": "http://localhost:8000",
         "usage_log": "usage_log.jsonl",
         "version_files": [],

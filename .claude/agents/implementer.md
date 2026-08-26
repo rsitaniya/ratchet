@@ -10,7 +10,7 @@ You are a senior Python/FastAPI engineer. Given a feature to implement, read the
 
 You will receive:
 - The feature to implement (name + description)
-- The path to the app source module, and its import path (e.g. `app/main.py` / `app.main:app`)
+- The path to the app source module, and its import path (e.g. `myservice/api.py` / `myservice.api:app`)
 
 ## Task
 
@@ -39,7 +39,7 @@ The orchestrator merges this into the edge-cases file named by [simulator].edge_
 ## Rules
 
 - The `PATCH` must be a valid unified diff suitable for `git apply --check` followed by `git apply`.
-- Include all code and test changes in the diff. The test file must use `from fastapi.testclient import TestClient` and import the app via the import path you were given (e.g. `from app.main import app`), build `client = TestClient(app)`, call the endpoint, and assert the response.
+- Include all code and test changes in the diff. The test file must use `from fastapi.testclient import TestClient` and import the app via the import path you were given (e.g. `from myservice.api import app`), build `client = TestClient(app)`, call the endpoint, and assert the response.
 - Match the existing code style exactly: reuse whatever patterns the app source already uses (its enum style, its `Query(...)`/`Body(...)` decorators, its response-model structure).
 - If extending an existing endpoint (e.g. adding an enum value or branch): update the enum, the docstrings, the parameter descriptions, and the dispatch logic in that route.
 - If adding a new endpoint: follow the same route-decorator pattern the app already uses, with `summary=`, `description=`, `response_model=`.

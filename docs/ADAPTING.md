@@ -26,10 +26,10 @@ Select a non-root configuration with `FLYWHEEL_CONFIG=path/to/flywheel.toml`. Pa
 ## Required telemetry shape
 
 ```json
-{"timestamp":"...","path":"/refund","method":"POST","inputs":{},"status_code":404,"latency_ms":0.4,"error_type":null,"source":"simulator"}
+{"timestamp":"...","event":"http","path":"/refund","method":"POST","status_code":404,"latency_ms":0.4,"error_type":null,"source":"simulator","run_id":null}
 ```
 
-Copy and adapt the middleware in `app/main.py`. Do not exclude unknown product paths: a 404 is a useful failed-intent signal, not an infrastructure endpoint.
+Copy and adapt the `usage_logger` middleware in `engagements/madi_onboarding/app/main.py`. Do not exclude unknown product paths: a 404 is a useful failed-intent signal, not an infrastructure endpoint.
 
 ## Optional domain controls
 

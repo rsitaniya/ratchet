@@ -1,11 +1,11 @@
 # dev-flywheel — Agentic Dev Loop
 
-The bundled calculator in `app/` is the **example app**, not the point. The loop is
-the project. Domain knowledge lives in `flywheel.toml`, `edge_cases.json`, and
-per-engagement packages under `engagements/` only — see `docs/ADAPTING.md`.
+The loop is the project, not any one app it runs against. Domain knowledge lives in
+a `flywheel.toml`, an optional `edge_cases.json`, and per-engagement packages under
+`engagements/` only — see `docs/ADAPTING.md`.
 
-The reference engagement, `engagements/madi_onboarding/`, points the same generic
-loop at a partner-data onboarding API benchmarked on MaDI-Bench, with a **held-out
+The reference engagement, `engagements/madi_onboarding/`, points the generic loop
+at a partner-data onboarding API benchmarked on MaDI-Bench, with a **held-out
 evaluator** the loop is forbidden to edit. It selects itself purely via
 `FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.toml`.
 
@@ -13,12 +13,16 @@ evaluator** the loop is forbidden to edit. It selects itself purely via
 
 ```bash
 # 1. Install dependencies
-pip install -r requirements.txt
+pip install -e ".[dev]"
 
-# 2. Start the API (--reload picks up new routes automatically)
-uvicorn app.main:app --reload
+# 2. Point the loop at the reference engagement and start its API
+export FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.toml
+export USAGE_LOG_PATH=$(python scripts/flywheel_config.py --get app.usage_log)
+uvicorn "$(python scripts/flywheel_config.py --get app.module)" --reload
 
-# 3. Run the simulator (in a second terminal or new Claude Code session)
+# 3. Build the replay traffic the config points at (in a second terminal),
+#    then run the simulator
+python engagements/madi_onboarding/to_replay.py --source forbes
 /simulate
 
 # 4. Run one full agentic development cycle
@@ -32,9 +36,8 @@ uvicorn app.main:app --reload
 
 | File | Purpose |
 |------|---------|
-| `flywheel.toml` | **The only seam between the loop and a specific API** — app module, version files, signal params |
+| `flywheel.toml` | **The only seam between the loop and a specific API** — app module, version files, signal params. One per app; the shipped example is `engagements/madi_onboarding/flywheel.toml` |
 | `edge_cases.json` | Correlated domain edge cases for the simulator (optional; grown by the loop each cycle) |
-| `app/main.py` | Example FastAPI app — calculator + usage middleware |
 | `usage_log.jsonl` | Runtime product signal (gitignored; auto-created by API traffic) |
 | `scripts/simulate.py` | Schema-driven simulator (called by /simulate skill) |
 | `scripts/analyze_usage.py` | Turns the raw log into the signal report the feature-suggester reads |

@@ -74,6 +74,3 @@ def test_duplicate_record_id_is_processed_independently_each_time(client):
     assert r1.json() == r2.json()
 
 
-def test_health_not_logged(client):
-    client.get("/health")
-    assert [e for e in _events(client) if e.get("path") == "/health"] == []

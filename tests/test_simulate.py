@@ -1,7 +1,8 @@
 """Unit tests for the simulator's replay mode and argument handling.
 
-The live firing path (httpx → running server) is exercised end-to-end by the CI
-loop-closure job in schema mode, which shares the same fire() code. These tests
+The live firing path (httpx → running server) is exercised end-to-end by the
+madi-engagement CI job's zero-domain-config step, which shares the same fire()
+code. These tests
 pin the new decision logic — traffic-source precedence, replay parsing, the
 fire-each-spec glue — and the backward-compatible positional interface the
 dev-loop skill and CI depend on (`simulate.py BASE_URL N`).

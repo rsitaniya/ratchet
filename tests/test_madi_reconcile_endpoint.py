@@ -48,6 +48,19 @@ def test_oversized_reconcile_input_is_rejected(client):
     assert r.status_code == 422
 
 
+def test_record_missing_record_id_is_a_422_not_a_500(client):
+    # matching.match() raises ValueError on a missing record_id — an engine
+    # invariant, not an HTTP concern. The boundary must translate it to a
+    # structured 422, the same shape /ingest returns, not an unhandled crash.
+    r = client.post("/reconcile", json={
+        "left_source": "acme_crm", "right_source": "vendor_erp",
+        "left": [{"country": "US"}], "right": [],
+    })
+    assert r.status_code == 422
+    assert r.json()["error"] == "MISSING_RECORD_ID"
+    assert r.json()["records"] == [{"source": "left", "index": 0}]
+
+
 def test_seed_rules_match_nothing_all_unmatched(client):
     # Committed matching_rules.toml is the weak seed (exact name) → 0 matches.
     body = _post(client).json()

@@ -74,7 +74,7 @@ def test_normalizers_and_adapter_data_stay_writable():
 
 
 def test_no_globs_means_nothing_protected():
-    # The calculator declares no protected paths → nothing is blocked.
+    # An app that declares no protected paths → nothing is blocked.
     assert C.protected_hits(C.changed_paths(_diff(EVALUATOR)), []) == []
 
 

@@ -27,14 +27,14 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from engagements.madi_onboarding import adapters as A
-from engagements.madi_onboarding import fusion, matching
+from engagements.madi_onboarding import fusion, matching, similarity
 
 ENGAGEMENT_DIR = Path(__file__).resolve().parent.parent
 TARGET_SCHEMA = json.loads((ENGAGEMENT_DIR / "fixtures" / "target_schema.json").read_text())
 ADAPTERS_DIR = ENGAGEMENT_DIR / "adapters"
 
-# Same seam as the calculator app (PR1): the launcher exports USAGE_LOG_PATH from
-# [app].usage_log so server and analyzer agree on the file.
+# The launcher exports USAGE_LOG_PATH from [app].usage_log so server and
+# analyzer agree on the file.
 USAGE_LOG = Path(os.environ.get("USAGE_LOG_PATH", "usage_log.jsonl"))
 
 SKIP_USAGE_PATHS = {"/openapi.json", "/docs", "/redoc", "/docs/oauth2-redirect", "/health", "/favicon.ico"}
@@ -151,6 +151,18 @@ async def reconcile(req: ReconcileRequest, request: Request):
     matched pair with the current fusion rules, and emit reconciliation signal:
     which records stayed unmatched, and which attributes conflict across matches.
     """
+    # matching.match() raises on a missing record_id (an engine invariant, not an
+    # HTTP concern) — check it here so a malformed record is a structured 422,
+    # the same shape /ingest already returns, not an unhandled 500.
+    missing_ids = [
+        {"source": src, "index": i}
+        for src, recs in (("left", req.left), ("right", req.right))
+        for i, rec in enumerate(recs)
+        if similarity.is_absent(rec.get("record_id"))
+    ]
+    if missing_ids:
+        return JSONResponse(status_code=422, content={"error": "MISSING_RECORD_ID", "records": missing_ids})
+
     attrs = list(TARGET_SCHEMA["attributes"])
     predicted = matching.match(req.left, req.right, matching.load_rules())
     frules = fusion.load_rules()

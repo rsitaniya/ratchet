@@ -22,7 +22,7 @@ def test_missing_config_returns_defaults(tmp_path):
     # An absent config file is a supported mode, not an error.
     cfg = tmp_path / "nope.toml"
     conf = flywheel_config.load_config(cfg)
-    assert conf["app"]["module"] == "app.main:app"
+    assert conf["app"]["module"] == "myservice.api:app"
     assert conf["simulator"]["default_requests"] == 30
     # Optional loop-safety keys default to empty (present so --get never errors).
     assert conf["app"]["evaluator"] == ""
