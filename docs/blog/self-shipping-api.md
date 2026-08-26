@@ -1,6 +1,8 @@
-# I built a calculator API that ships its own features
+# Notes from the calculator example
 
-*A small experiment in closing the loop between telemetry and the agent that writes your code.*
+*A long-form explanation of the bundled example app, not the repository's primary evidence.*
+
+For the evaluated partner-data onboarding engagement, start with the [case study](../../engagements/madi_onboarding/CASE_STUDY.md). For the reusable design, see [Delivery system architecture](../DELIVERY_SYSTEM.md).
 
 ---
 

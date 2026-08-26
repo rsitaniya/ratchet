@@ -1,342 +1,76 @@
-# SETUP.md — Agentic Development Loop
+# Local runbook
 
-A self-feeding, data-driven feature-shipping loop built on FastAPI + Claude Code.
-The loop generates usage signal, proposes features from data, gets human approval,
-implements + tests, updates docs, then re-exercises the new endpoint automatically.
-
----
+**Reader:** a practitioner running the bundled example or the reference engagement locally.
 
 ## Prerequisites
 
-- Python 3.11+
-- Claude Code CLI (`claude`) installed and authenticated
-- Two terminal windows (one for the API server, one for Claude Code)
+- Python 3.11–3.13
+- Two terminals
+- Claude Code only if you want to run `/simulate` or `/dev-loop`
 
 ```bash
-pip install -r requirements.txt
+pip install -e ".[dev]"
+pytest tests/ -q
+ruff check .
 ```
 
----
+Expected result: the test suite passes and Ruff reports no findings.
 
-## How to run the loop end-to-end
+## Example API: create signal
 
-### Terminal 1 — Start the API
+Terminal 1:
 
 ```bash
 uvicorn app.main:app --reload
 ```
 
-`--reload` is required so new routes added by the implementer are picked up without
-a manual restart. (`watchfiles` in `requirements.txt` powers this.)
-
-The API is now live at http://localhost:8000. Docs at http://localhost:8000/docs.
-
-### Terminal 2 — Claude Code
+Terminal 2:
 
 ```bash
-claude   # opens Claude Code in the project directory
+python scripts/simulate.py http://localhost:8000 30
+python scripts/analyze_usage.py usage_log.jsonl
 ```
 
-**Step 1 — Populate usage data:**
-```
-/simulate
+The simulator reads `/openapi.json`, exercises the available endpoints, and writes only product-endpoint telemetry. Stop the server with `Ctrl+C`.
+
+## Reference engagement: replay partner onboarding
+
+Terminal 1:
+
+```bash
+export FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.toml
+export USAGE_LOG_PATH=$(python scripts/flywheel_config.py --get app.usage_log)
+uvicorn "$(python scripts/flywheel_config.py --get app.module)" --port 8000
 ```
 
-**Step 2 — Run the full agentic cycle:**
+Terminal 2:
+
+```bash
+python engagements/madi_onboarding/to_replay.py --source forbes
+python scripts/simulate.py --run-id local-baseline
+python engagements/madi_onboarding/analyze_integration.py "$USAGE_LOG_PATH" --source forbes --run-id local-baseline
+python engagements/madi_onboarding/evaluate.py
 ```
+
+The shipped `forbes` adapter is intentionally empty: this command reports the baseline. The documented successful states live in [run receipts](engagements/madi_onboarding/runs/README.md); do not replace the baseline adapter unless you intend to reproduce a cycle.
+
+## Run a reviewed agent cycle
+
+With Claude Code open in the repository:
+
+```text
 /dev-loop
 ```
 
-**Bonus — run cycles continuously with Claude Code's built-in loop runner:**
-```
-/loop /dev-loop
-```
+The loop refuses a dirty working tree, asks for scope approval, validates the returned diff, runs tests and the configured evaluator, then asks whether to retain the exact tested patch. `/loop /dev-loop` repeats this workflow; it does not remove either approval gate.
 
-The loop will:
-1. Refuse to start if the working tree is dirty (so a Gate-2 revert never destroys unrelated work)
-2. Simulate API traffic → populates `usage_log.jsonl`; the orchestrator runs the analyzer
-3. Invoke the feature-suggester → returns 2-3 proposals grounded in the data
-4. **Stop and ask you to pick a feature (Gate 1)** ← first blocking step
-5. Invoke the implementer → returns a unified diff + metadata; the orchestrator runs the protected-path guard, then `git apply --check` + `git apply`, then `pytest`
-6. Invoke docs-updater → returns an OpenAPI-metadata diff, applied under the same guard
-7. Run the app's evaluator (if any) and **show you the exact tested patch to keep or revert (Gate 2)** ← second blocking step
-8. Restart server to reload new routes; re-run the simulator to confirm the new endpoint appears and is exercised
+## Common failures
 
----
+| Symptom | Check |
+|---|---|
+| `ModuleNotFoundError: engagements` | Reinstall with `pip install -e ".[dev]"`; do not use the runtime-only dependency path. |
+| Simulator cannot connect | Confirm the server, port, and `base_url` in the active configuration. |
+| No integration telemetry | Confirm `USAGE_LOG_PATH` is exported before starting the engagement API. |
+| Evaluator result differs from a receipt | Confirm which adapter snapshot is installed and use the receipt’s prior evaluator output as `--baseline`. |
 
-## What each subagent does and how they hand off
-
-```
-/dev-loop (orchestrator, parent skill)
-    │
-    ├─ [Bash] python scripts/simulate.py → usage_log.jsonl populated
-    │
-    ├─ [Agent] feature-suggester ──────────────────────────────────────────┐
-    │       runs:    scripts/analyze_usage.py (signal report)               │
-    │       reads:   app/main.py (skips already-implemented features)       │
-    │       returns: PROPOSALS block (2-3 options with signal + complexity) │
-    │   ◄───────────────────────────────────────────────────────────────────┘
-    │
-    ├─ [AskUserQuestion] ⏸ HUMAN PICKS ONE FEATURE (or "Skip this cycle")
-    │
-    ├─ [Agent] implementer ─────────────────────────────────────────────────┐
-    │       reads: app/main.py (for style/context)                          │
-    │       returns: unified diff + TEST_FILE + CHANGELOG + EDGE_CASES JSON   │
-    │   ◄───────────────────────────────────────────────────────────────────┘
-    │
-    ├─ [Bash] git apply --check + git apply for code/test patch
-    ├─ [Edit] Orchestrator applies changelog/version/edge-case metadata
-    ├─ [Bash] pytest tests/ -v  ← must pass before continuing
-    ├─ [Bash] restart uvicorn
-    │
-    ├─ [Agent] docs-updater ────────────────────────────────────────────────┐
-    │       reads: app/main.py                                              │
-    │       returns: unified diff for OpenAPI metadata, or NO_CHANGES_NEEDED │
-    │   ◄───────────────────────────────────────────────────────────────────┘
-    │
-    ├─ [Bash] git apply --check + git apply for metadata patch
-    └─ [Bash] simulator re-run → confirms new endpoint in /openapi.json
-
-Continuous mode is supplied by Claude Code's built-in `/loop` runner:
-`/loop /dev-loop`.
-```
-
-**Key design: subagents are read-only planners.** They return standard patch artifacts;
-the orchestrator applies every file write. This means:
-- No permission prompts inside subagents
-- Single point of control for all mutations
-- Clean, auditable handoffs — unified diff + JSON metadata is the contract
-- Repeatable patch application — every subagent diff is checked with `git apply --check`
-  before it mutates the worktree
-
----
-
-## Where the human-approval step lives
-
-In **`/dev-loop`** (the parent orchestrator skill), not in any subagent.
-
-Specifically, after the feature-suggester returns its PROPOSALS block,
-the orchestrator calls `AskUserQuestion` with the proposals as options.
-This is the only `AskUserQuestion` call in the entire system.
-Everything before and after it chains automatically.
-
-This placement is deliberate: subagents in Claude Code cannot block for
-user input (they run headlessly). Both blocking gates must be in the parent
-skill where the interactive session lives.
-
----
-
-## How the usage-collection mechanism works and why it's designed this way
-
-### Mechanism
-
-A FastAPI middleware (`@app.middleware("http")` in `app/main.py`) intercepts every
-request to a **product endpoint** — everything except a small infra skip-list
-(`SKIP_USAGE_PATHS`: `/health`, `/docs`, `/redoc`, `/openapi.json`, …) — and appends
-a JSON record to `usage_log.jsonl`:
-
-```json
-{
-  "timestamp": "2026-06-16T10:23:45.123Z",
-  "path": "/calculate",
-  "method": "GET",
-  "operation": "divide",
-  "inputs": {"op": "divide", "a": "10", "b": "0"},
-  "status_code": 400,
-  "latency_ms": 1.23,
-  "error_type": "DivisionByZero",
-  "source": "simulator"
-}
-```
-
-`inputs` captures all query params generically, so the record shape is the same
-for any endpoint. The file is append-only; historical entries accumulate across cycles.
-
-### Endpoint-generic by design — the loop self-feeds for any feature shape
-
-Recording is keyed off the request path, not hardcoded to `/calculate`. This is what
-makes the loop genuinely self-feeding for **any** feature, not just new `op` values:
-
-- A new endpoint shipped by the loop (e.g. `GET /sqrt`) is exercised by the simulator
-  *and* its traffic (`path: /sqrt`, status, latency) is recorded — so the next cycle's
-  suggester sees its real usage and can refine it.
-- A request to a path that **doesn't exist yet** is recorded as a 404. `analyze_usage.py`
-  surfaces these under **"Requested-but-missing endpoints"** — direct demand signal that
-  says "build this endpoint." (See `tests/test_usage_logging.py` for the functional proof.)
-
-### The `source` field — keeping signal honest
-
-Each record carries a `source` (`simulator` | `unknown`), taken from the
-`X-Usage-Source` request header. The simulator sets it; ad-hoc/real callers
-default to `unknown`. This lets `analyze_usage.py --source simulator` separate
-generated traffic from organic traffic.
-
-**Test traffic never reaches this file.** `tests/conftest.py` redirects
-`USAGE_LOG` to a temp path for the whole test session, so running `pytest`
-cannot pollute the product signal that the feature-suggester reads.
-
-### `analyze_usage.py` — raw log → actionable signal
-
-The feature-suggester does not read raw JSONL. It runs `scripts/analyze_usage.py`,
-which produces a per-endpoint/operation table (call volume, error rate, error-type
-breakdown — keyed by `op` for `/calculate` and by `path` for other endpoints),
-flags likely-unsupported operations (100% HTTP 422), lists requested-but-missing
-endpoints (HTTP 404), and surfaces input-distribution signals (b=0 rate, negatives).
-This mirrors how a PM reads an event stream: rates and failed-intent signals, not
-individual log lines.
-
-### Why middleware, not application-level logging
-
-Middleware fires unconditionally on every request, including requests that
-raise validation errors (422) before the route handler runs. This means
-"attempted but unsupported" operations (like `op=modulo` before modulo exists)
-appear as 422 errors in the log — which is exactly the signal that tells us
-to add that operation.
-
-Application-level logging (inside the route handler) would miss those.
-
-### Why jsonl, not a database
-
-One JSON object per line means:
-- Zero setup — no DB, no schema migration
-- `wc -l usage_log.jsonl` gives total call count instantly
-- `grep '"operation":"divide"' usage_log.jsonl | wc -l` gives per-op count
-- `analyze_usage.py` parses it into a signal report with no DB or query engine
-- Append-only = safe for concurrent single-worker writes
-
-### Why this is product signal, not just a log
-
-Each record contains `error_type` (machine-readable), not just `status_code`.
-The feature-suggester looks for patterns like:
-
-- `error_type: DivisionByZero` in 12% of divide calls → add safe-divide or modulo
-- `status_code: 422` on unknown `op` values → add the missing operation
-- High `latency_ms` on any operation → performance signal
-- Zero-value inputs concentrated on one operation → add guard/edge-case handling
-
-This mirrors how a real PM would use event-stream data: error rates, input
-distributions, and failed-intent signals (422s on unknown ops) all point at
-concrete product gaps.
-
----
-
-## Which plugins/skills were used and why
-
-| Component | What it is | Why used |
-|-----------|-----------|---------|
-| `.claude/skills/simulate/SKILL.md` | Native Claude Code skill | Single-command invocation (`/simulate`), no framework overhead |
-| `.claude/skills/dev-loop/SKILL.md` | Native Claude Code skill | Orchestrates one complete cycle; has access to `AskUserQuestion` for the approval gate |
-| `.claude/agents/feature-suggester.md` | Native Claude Code subagent | Scoped read-only tools; clear system prompt; invoked via `Agent` tool from orchestrator |
-| `.claude/agents/implementer.md` | Native Claude Code subagent | Read-only — returns unified diff + metadata the orchestrator validates and applies |
-| `.claude/agents/docs-updater.md` | Native Claude Code subagent | Read-only — returns a unified diff for OpenAPI metadata |
-| Claude Code `/loop` | Built-in Claude Code loop runner | Provides the deterministic continuous runtime wrapper for the bonus command |
-| FastAPI `TestClient` | FastAPI built-in | In-process tests; no live server needed; idiomatic for FastAPI projects |
-| `scripts/simulate.py` | Plain Python + httpx | Generic multi-endpoint simulator; discovers every path+method from `/openapi.json` and synthesizes requests from their schemas |
-
-**Why native Claude Code skills/subagents plus `/loop`:**
-The `.claude/skills/<name>/SKILL.md` + `.claude/agents/<name>.md` convention
-is Claude Code's built-in orchestration layer. `/loop` is Claude Code's existing
-runtime loop framework, so the continuous bonus is not a hand-rolled `while true`
-script. This keeps the solution convention-aware without adding a heavyweight
-external framework (LangGraph, CrewAI, etc.) inside a 150-minute time box.
-
----
-
-## How to adapt this setup to a different API
-
-> **See [docs/ADAPTING.md](docs/ADAPTING.md) for the step-by-step guide.** What follows is
-> the design rationale for *why* so little of this is domain-specific.
-
-Nothing under `scripts/` or `.claude/` carries domain knowledge. The calculator-specific
-surface is two root config files plus the app itself:
-
-1. **`app/main.py`** — replace entirely with your API. Keep the usage middleware
-   (~20 lines) and adjust **`SKIP_USAGE_PATHS`**, its infra skip-list (`/health`,
-   `/docs`, `/openapi.json`, …). Every other endpoint is captured automatically with
-   no per-endpoint wiring.
-2. **`flywheel.toml`** — declares the app module, the files whose version the
-   orchestrator bumps each cycle, and (under `[signals]`) which request params are
-   worth profiling in the usage report.
-3. **`edge_cases.json`** — an *optional* overlay of correlated edge cases keyed by an
-   enum value (here, the `op` query param: e.g. `divide` → `{"a": 10, "b": 0}`).
-   Replace with your domain's interesting inputs, or delete the file — the simulator
-   still works from the schema alone. The dev-loop appends to it as it ships features.
-
-Both config files fall back to working defaults, so the loop runs with neither present.
-
-Everything else is generic by construction:
-
-- **The simulator reads `/openapi.json` and exercises every path + method it finds**,
-  synthesizing query params, path params, and JSON request bodies directly from their
-  schemas (`$ref`, `enum`, arrays, and nested objects are all resolved). A brand-new
-  endpoint — a `GET`, or a `POST` with a body, or one with path params — is exercised
-  automatically on the next cycle with **no edits to the simulator**. (Verified against
-  a synthetic `POST /batch` + `GET /history/{id}` schema.)
-- The feature-suggester prompt works for any `usage_log.jsonl` with the same record shape
-- The implementer and docs-updater prompts are FastAPI-oriented but apply to any Python/FastAPI service
-- The dev-loop orchestrator is fully generic — it applies whatever structured text the subagents return
-
-**Signal and exercise are both endpoint-generic.** The simulator *exercises* every
-endpoint discovered from `/openapi.json`, and the middleware *records* every product
-endpoint (everything outside `SKIP_USAGE_PATHS`). So a newly-shipped endpoint of any
-shape is both hit and turned into signal on the next cycle — no per-endpoint wiring —
-and even requests to paths that don't exist yet are captured as 404 demand signal.
-
-**To target a non-OpenAPI API:** swap the schema source in `simulate.py` (e.g. fetch a
-Postman collection or a custom spec) and keep the same generate-from-schema logic. The
-rest of the loop is unchanged.
-
----
-
-## Bonus: fully automated loop
-
-**Status: Implemented.**
-
-`/dev-loop` performs one complete, test-gated cycle. The continuous runtime loop is
-Claude Code's built-in `/loop` runner:
-
-```
-/loop /dev-loop
-```
-
-That single command keeps launching cycles until you stop it. The two `AskUserQuestion`
-gates — STEP 3 (approve the proposal) and STEP 6 (approve the tested patch) — are the
-blocking steps. Every other step chains automatically inside each cycle. To exit the loop:
-
-- Choose **"Skip this cycle"** at the STEP 3 gate (graceful), or
-- Choose **Revert** at the STEP 6 gate, or
-- Press **Ctrl+C** at any time.
-
----
-
-## File structure
-
-```
-dev-flywheel/
-├── README.md            # Landing page: thesis, loop diagram, demo, receipts
-├── CLAUDE.md            # Project conventions + quick-start
-├── SETUP.md             # This file — mechanism and design rationale
-├── CHANGELOG.md         # Feature history — a release section per shipped cycle
-├── flywheel.toml        # ★ The seam: app module, version files, signal params
-├── edge_cases.json      # ★ Optional correlated edge cases (grown by the loop)
-├── LICENSE / NOTICE     # Apache-2.0
-├── requirements.txt     # Python dependencies (quickstart)
-├── pyproject.toml       # Package metadata, ruff + pytest config
-├── .gitignore           # Ignores caches, venvs, zips, runtime usage_log.jsonl
-├── usage_log.jsonl      # Runtime usage signal (gitignored; auto-created on first run)
-├── app/                 # Example FastAPI app: calculator + usage middleware (main.py)
-├── scripts/             # simulate.py + analyze_usage.py + flywheel_config.py (config loader)
-├── tests/               # FastAPI TestClient suites + conftest.py (shared client, usage_log isolation)
-│                        #   one test_<feature>.py is added per shipped cycle
-├── docs/                # ADAPTING.md (use your own API), demo.gif, blog/
-├── .github/workflows/   # CI: lint + tests (3.11–3.13) + a loop-closure job
-└── .claude/
-    ├── agents/          # Read-only subagents: feature-suggester, implementer, docs-updater
-    └── skills/          # /simulate and /dev-loop orchestrator
-```
-
-★ = the only files carrying domain knowledge. Everything else is generic.
-
-> The `tests/`, `scripts/`, and `app/` contents grow as the loop ships features
-> (each cycle adds a `test_<feature>.py`), so this tree is described by directory
-> rather than enumerated file-by-file — it stays accurate as the loop runs.
+For the configuration interface, see [docs/ADAPTING.md](docs/ADAPTING.md).
