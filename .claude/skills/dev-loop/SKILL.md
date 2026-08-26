@@ -1,13 +1,14 @@
 ---
 name: dev-loop
-description: One complete agentic development cycle — simulate → suggest → HUMAN APPROVES → implement → test → docs. Use `/loop /dev-loop` for the automated continuous loop.
+description: One complete agentic development cycle — simulate → propose → HUMAN APPROVES → implement → test → HUMAN APPROVES. Use `/loop /dev-loop` for the automated continuous loop.
 allowed-tools: Bash, Read, Edit, Write, Agent, AskUserQuestion
 ---
 
 # Dev Loop Orchestrator
 
-Runs one complete feature-shipping cycle. All subagents are **read-only planners**;
-this orchestrator is the **sole writer** — it applies every file change. For the
+Runs one complete feature-shipping cycle. The **implementer** subagent is a
+**read-only planner** — it returns a diff and cannot write files; this
+orchestrator is the **sole writer** — it applies every file change. For the
 fully automated bonus, run this skill through Claude Code's built-in `/loop` runner:
 `/loop /dev-loop`.
 
@@ -30,6 +31,20 @@ Everything domain-specific comes from the active `flywheel.toml` (selected by
 `$FLYWHEEL_CONFIG`, else the repo-root file). Read the app module, base URL, and
 usage-log path from it rather than hardcoding — that is what lets this one loop
 drive any app.
+
+**Echo and confirm the resolved config before anything else runs.** A run with
+no config resolved has an empty `[protected].paths`, so `check_protected_paths.py`
+now refuses to bless any patch until a real config is confirmed (see STEP 4) —
+but that refusal should not be the operator's first signal that `$FLYWHEEL_CONFIG`
+was wrong or unset. Surface it up front instead:
+
+```bash
+if ! MODULE=$(uv run python scripts/flywheel_config.py --get app.module); then
+  echo "ABORT: could not resolve the active config (see error above). Check \$FLYWHEEL_CONFIG."; exit 1
+fi
+echo "Active config: ${FLYWHEEL_CONFIG:-<none set — falls back to defaults, no engagement selected>}"
+echo "App module: $MODULE"
+```
 
 **Snapshot the evaluator baseline now, while the tree is still the pre-cycle
 state** (the precondition above just proved it's clean). This is what makes the
@@ -78,33 +93,39 @@ wc -l "$(uv run python scripts/flywheel_config.py --get app.usage_log)"
 
 ---
 
-## STEP 2 — Suggest features (subagent, read-only)
+## STEP 2 — Propose features from the signal report
 
-Resolve paths from config and **run the analyzer yourself** — the feature-suggester
-is a read-only planner with no shell, so you produce its input. The analyzer command
-comes from config (`app.analyzer`), defaulting to the generic HTTP analyzer; an
-engagement points it at its own domain gap-ranker:
+Every shipped engagement declares its own domain analyzer (`[app].analyzer`) — the
+generic per-endpoint HTTP analyzer this repo shipped alongside the calculator
+example is gone along with that example, so `app.analyzer` is required, not
+optional:
 
 ```bash
 USAGE_LOG=$(uv run python scripts/flywheel_config.py --get app.usage_log)
-ANALYZER=$(uv run python scripts/flywheel_config.py --get app.analyzer)   # empty → generic
-REPORT=$(${ANALYZER:-uv run python scripts/analyze_usage.py} "$USAGE_LOG")
-uv run python scripts/flywheel_config.py --get app.module   # e.g. myservice.api:app → myservice/api.py
+ANALYZER=$(uv run python scripts/flywheel_config.py --get app.analyzer)
+if [ -z "$ANALYZER" ]; then
+  echo "ABORT: [app].analyzer is not set in the active flywheel.toml."; exit 1
+fi
+REPORT=$(eval "$ANALYZER" "$USAGE_LOG")
 ```
 
-Invoke the **feature-suggester** subagent, passing the report inline:
+Read `<app source file from config>` for what is already supported (existing
+endpoints, enums, request/response models — the current schema), then propose
+2-3 features grounded in the signal report:
 
-```
-Agent: feature-suggester
-Input: "Signal report:\n<the $REPORT text>\n\nRead <app source file from config> for currently-supported functionality, and propose 2-3 features that are NOT already implemented."
-```
+- Cite a specific number from `$REPORT` for each proposal (a count, a
+  percentage, a ratio) — a proposal that cannot point at data in the report is
+  not grounded.
+- Never re-propose something the app already implements — check the app source
+  first.
+- Prefer low-complexity proposals; this is a time-boxed exercise.
 
-The subagent returns a PROPOSALS block with 2-3 options, each with:
-- Signal (specific numbers from the data)
-- Description (one sentence)
-- Complexity estimate
-
-Capture the full PROPOSALS text.
+There is no dedicated subagent for this step: producing 2-3 sentences from a
+report you just generated, for a human to choose between at Gate 1, does not
+need an isolated context or a restricted tool grant — you already hold the
+report and the app source, and a subagent here would only reformat what you
+already have. State the 2-3 proposals (name, signal, one-line description,
+complexity estimate) directly.
 
 ---
 
@@ -134,7 +155,7 @@ Invoke the **implementer** subagent:
 
 ```
 Agent: implementer
-Input: "Implement: [chosen feature name and description]. Read <app source file from config> for context (its import path is <app.module from config>). Return PATCH, TEST_FILE, CHANGELOG, and EDGE_CASES."
+Input: "Implement: [chosen feature name and description]. Read <app source file from config> for context (its import path is <app.module from config>). Return PATCH, TEST_FILE, and CHANGELOG."
 ```
 
 The subagent returns structured output with exact delimiters:
@@ -147,25 +168,34 @@ PATCH:
 TEST_FILE: tests/test_[name].py
 
 CHANGELOG: [one-line summary]
-
-EDGE_CASES: {"<op-or-feature>": [{"a": .., "b": ..}, ...]}
 ````
 
 **Orchestrator applies ALL the writes (the orchestrator is the sole writer):**
 
-1. **Code + test patch** — Extract the `PATCH:` diff into a temp file.
-   - **Protected-path check (do this BEFORE `git apply --check`).** Run the deterministic checker on the patch:
-     ```bash
-     uv run python scripts/check_protected_paths.py <tempfile>
-     ```
-     Exit 0 = clean, proceed. **Exit 2 = the patch touches a protected path** (held-out evaluator, gold labels, fixtures, scoring — read from `[protected].paths` in the active config). **REJECT the patch** — do not apply it — and ask the implementer to resubmit without touching protected files. This is what stops the loop from gaming its own test. Apps that declare no `[protected]` paths always pass.
-   - Then run `git apply --check <tempfile>`. If it passes, run `git apply <tempfile>`. If it fails, inspect the failure and either repair the diff directly or ask the implementer for a corrected unified diff.
+1. **Code + test patch** — Extract the `PATCH:` diff into a temp file, then run:
+   ```bash
+   uv run python scripts/apply_patch.py <tempfile>
+   ```
+   This is the only path that applies a patch: it runs the protected-path guard,
+   `git apply --check`, and `git apply` in that fixed order, so there is no step
+   to skip and no way for a patch to reach the tree without passing the guard
+   first. **Exit 2 from the guard stage = the patch touches a protected path**
+   (held-out evaluator, gold labels, fixtures, `runs/`, scoring — read from
+   `[protected].paths` in the active config) — **REJECT the patch** and ask the
+   implementer to resubmit without touching protected files. A nonzero exit
+   from the `git apply --check`/`git apply` stage means the diff itself is bad —
+   inspect the failure and either repair it directly or ask the implementer for
+   a corrected unified diff.
 2. **Test path sanity** — Confirm `TEST_FILE:` exists after the patch and is under `tests/`.
-3. **Changelog (version-per-cycle)** — Determine the next minor version (read the current `version=` in the app module named by `[app].module` in `flywheel.toml`; bump the minor, e.g. 0.3.0 → 0.4.0). In `CHANGELOG.md`, insert a new `## [<new-version>] - <today>` section directly under `## [Unreleased]` and put the `CHANGELOG:` entry under its `### Added`. Leave `## [Unreleased]` empty.
-4. **Version bump** — Use **Edit** to update the version string in every file listed in `[app].version_files` in the active `flywheel.toml` so the running app's version always matches the latest CHANGELOG release.
-5. **Simulator edge cases** — Parse `EDGE_CASES:` (JSON) → use **Edit** to merge the new entry into the JSON file named by `[simulator].edge_cases` in `flywheel.toml` (by default `edge_cases.json`), so the next simulator run exercises the new feature intelligently (not just with random inputs). Keys starting with `_` are documentation and are ignored by the loader.
-
-> The docs INSIDE the API (`/openapi.json`) are handled separately by the docs-updater in STEP 5.5. STEPs 3–5 above keep the *project* docs (CHANGELOG, version, simulator) in sync; STEP 5.5 keeps the *API* docs in sync. Both must happen every cycle.
+3. **Changelog** — In `CHANGELOG.md`, insert (or append to) a `## [Unreleased]`
+   entry under `### Added` with the `CHANGELOG:` line.
+4. **Version bump (only if `[app].version_files` is non-empty)** — Most cycles
+   change a few lines of adapter or rule TOML; treat a version release as a
+   deliberate operator action, not something every cycle pays for. When
+   `version_files` is set: determine the next minor version (read the current
+   `version=` from `[app].module`; bump the minor), move the `## [Unreleased]`
+   section to `## [<new-version>] - <today>`, and use **Edit** to update the
+   version string in every file listed in `[app].version_files`.
 
 ---
 
@@ -182,36 +212,13 @@ uv run pytest tests/ -v
 
 ---
 
-## STEP 5.5 — Update API docs (subagent, read-only)
-
-Invoke the **docs-updater** subagent BEFORE the approval gate, so the human
-approves — and the evaluator scores — the complete final tree, not a partial one.
-
-```
-Agent: docs-updater
-Input: "Feature just implemented: [feature name and description]. Check <app source file from config> for complete OpenAPI metadata."
-```
-
-The subagent returns either `NO_CHANGES_NEEDED` or a `PATCH:` unified diff.
-
-**Orchestrator applies the patch under the SAME guard as every other patch —
-a docs patch is not exempt:**
-- If it returns `PATCH:`, extract the diff into a temp file and run
-  `uv run python scripts/check_protected_paths.py <tempfile>` FIRST. **Exit 2 = the patch
-  touches a protected path → REJECT it** and ask docs-updater to resubmit. On
-  exit 0, run `git apply --check <tempfile>` then `git apply <tempfile>`.
-- If `git apply --check` fails, repair the metadata patch directly or ask
-  docs-updater for a corrected unified diff.
-
----
-
 ## STEP 6 — HUMAN APPROVAL: GATE 2 (approve the exact tested tree) ⏸
 
 **The second gate, and it runs after every edit this cycle — code, tests,
-changelog, version, edge cases, and docs are all applied by now.** Approving what
-to build (Gate 1) does not authorize whatever the implementer produced. An agent
-can make tests pass by weakening them; a held-out evaluator plus a human reading
-the actual diff are what catch that.
+changelog, and (when applicable) version are all applied by now.** Approving
+what to build (Gate 1) does not authorize whatever the implementer produced. An
+agent can make tests pass by weakening them; a held-out evaluator plus a human
+reading the actual diff are what catch that.
 
 1. **Run the app's evaluator, if it declares one, against the pre-cycle baseline STEP 1 captured.**
    ```bash
@@ -312,11 +319,38 @@ to stop.
 
 ## IMPORTANT NOTES
 
-- **Subagents are read-only.** They return structured text only. This orchestrator applies every write.
-- **Subagent patches use standard unified diff format.** Validate with `git apply --check` before applying.
-- **Two human gates block the loop: STEP 3 (approve the proposal) and STEP 6 (approve the exact tested tree).** All other steps chain automatically.
-- **Every applied patch — code, docs, anything — passes `check_protected_paths.py` before `git apply`.** No patch is exempt. The evaluator and Gate 2 run only after all edits are applied, so they judge the final tree.
-- **The implementer may never touch protected paths** (held-out evaluators, gold, fixtures, scoring). The orchestrator rejects such patches before applying (STEP 4.1). This is enforcement, not etiquette, for the implementer specifically: it holds no Bash, so its diff is its only mutation path, and every diff passes the guard. The orchestrator's own direct edits (STEP 4.3-4.5: CHANGELOG, version files, `edge_cases.json`) skip the diff-based guard — those three files are never protected-path candidates in any shipped config, so there is nothing for that skip to reach, but it means "every write is guarded" is a claim about the implementer's contract, not a kernel-level boundary on the orchestrator itself.
+- **One subagent, `implementer`, and its restriction is mechanical, not procedural.**
+  It holds `Read, Grep, Glob` — no Bash, no Edit, no Write — so a returned diff
+  is its *only* possible mutation path, and Claude Code's own deny rules block
+  it from reading fixtures, gold, or `runs/` at the tool level (not just by
+  instruction). Feature proposal (STEP 2) does not warrant a second subagent:
+  the orchestrator already holds the signal report and the app source that
+  step needs, and a subagent there would only reformat what it already has —
+  its output is a few sentences a human chooses between at Gate 1, which is not
+  an isolation boundary worth a round-trip. Everything past the implementer's
+  diff is deterministic code (`apply_patch.py`, the evaluator, tests) or a
+  human at one of the two gates.
+- **Every patch — always, no exceptions — goes through `scripts/apply_patch.py`,
+  never `git apply` directly.** That script *is* the guard: it runs the
+  protected-path check, `git apply --check`, and `git apply`, in that order,
+  with no path that skips any of the three. `.claude/settings.json` also denies
+  `Bash(git apply:*)` directly, so `apply_patch.py` is the path of least
+  resistance, not just the documented one. This is a stronger claim than "every
+  write is guarded" used to be — there is no longer a category of orchestrator
+  edit (CHANGELOG, version bump) that bypasses it, because those edits use Edit,
+  not `git apply`, and were never diff-based to begin with. **What this is not:**
+  an OS-level boundary. The orchestrator holds Bash and could still reach `git
+  apply` through a shell construct the deny prefix doesn't match. What changed
+  is the failure mode — bypassing the guard now requires deliberate evasion,
+  not a forgotten step. See `SECURITY.md`.
+- **Two human gates block the loop: STEP 3 (approve the proposal) and STEP 6
+  (approve the exact tested tree).** All other steps chain automatically.
+- **`check_protected_paths.py` (run inside `apply_patch.py`) refuses to run at
+  all if no `flywheel.toml` resolves** — a missing config is not the same as a
+  config that declares nothing protected, and blessing a patch because no one
+  configured protection would be the guard's own version of the bug it exists
+  to prevent. STEP 1 echoes the resolved config up front so this is never the
+  operator's first signal that `$FLYWHEEL_CONFIG` was wrong.
 - **Continuous mode uses Claude Code's built-in `/loop` runner.** Use `/loop /dev-loop`; stop with Ctrl+C.
 - **Do not skip the test step.** A feature is not shipped until `uv run pytest tests/ -v` passes.
 - **Do not truncate the usage log** — historical entries are the signal for future cycles.

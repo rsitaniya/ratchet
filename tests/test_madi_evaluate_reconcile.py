@@ -59,3 +59,23 @@ def test_main_includes_reconcile(capsys):
     out = json.loads(capsys.readouterr().out)
     assert "reconcile" in out
     assert set(out["reconcile"]) == {"entity_matching", "fusion"}
+
+
+def test_main_appends_to_eval_log_when_set(tmp_path, monkeypatch, capsys):
+    import json
+    log = tmp_path / "eval_log.jsonl"
+    monkeypatch.setenv("FLYWHEEL_EVAL_LOG", str(log))
+    E.main([])
+    E.main([])
+    capsys.readouterr()
+    lines = log.read_text().splitlines()
+    assert len(lines) == 2
+    row = json.loads(lines[0])
+    assert "timestamp" in row and "sources" in row
+
+
+def test_main_skips_eval_log_when_unset(tmp_path, monkeypatch, capsys):
+    monkeypatch.delenv("FLYWHEEL_EVAL_LOG", raising=False)
+    E.main([])
+    capsys.readouterr()
+    assert not (tmp_path / "eval_log.jsonl").exists()

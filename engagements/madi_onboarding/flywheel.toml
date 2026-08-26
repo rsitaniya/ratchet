@@ -9,9 +9,9 @@ usage_log = "usage_log.jsonl"                      # → engagements/madi_onboar
 version_files = ["engagements/madi_onboarding/app/main.py"]
 # The held-out oracle the dev-loop runs at Gate 2 to score a proposed adapter.
 evaluator = "python engagements/madi_onboarding/evaluate.py"
-# The domain gap-ranker the dev-loop runs to build the feature-suggester's signal
+# The domain gap-ranker the dev-loop runs to build STEP 2's proposal signal
 # (the orchestrator appends the usage-log path). This is what wires the engagement
-# analyzer into the loop instead of the generic HTTP one.
+# analyzer into the loop.
 analyzer = "python engagements/madi_onboarding/analyze_integration.py --source forbes"
 
 [protected]
@@ -33,16 +33,8 @@ paths = [
 ]
 
 [simulator]
-# No schema-random edge-case overlay: this engagement is replay-driven.
-edge_cases = ""
 default_requests = 30
 
 [traffic]
 # The new source's records, replayed as POST /ingest calls (build with to_replay.py).
 replay_file = "replay_forbes.jsonl"                # → engagements/madi_onboarding/replay_forbes.jsonl
-
-[signals]
-# Generic input-distribution profiling is not used here; the domain signal comes
-# from engagements/madi_onboarding/analyze_integration.py.
-numeric_params = []
-zero_value_params = []

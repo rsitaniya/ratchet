@@ -1,6 +1,6 @@
 ---
 name: simulate
-description: Schema-driven API simulator. Fetches /openapi.json, discovers operations, fires realistic + edge-case requests to populate the usage log.
+description: Schema-driven API simulator. Fetches /openapi.json, discovers operations, and fires synthesized requests to populate the usage log.
 allowed-tools: Bash, Read
 ---
 
@@ -46,7 +46,7 @@ uv run python scripts/simulate.py
 
 This script (no args → base URL and request count come from config):
 - Fetches `/openapi.json` and walks every path + method to discover all operations
-- Synthesizes requests from each operation's parameter and body schemas, biased toward boundary values that produce signal, plus any correlated edge cases in `[simulator].edge_cases`
+- Synthesizes requests from each operation's parameter and body schemas, biased toward boundary values that produce signal
 - Prints a per-request log and a summary table
 - Every request is recorded to the server's usage log via the app's usage middleware
 
@@ -66,5 +66,5 @@ LOG=$(uv run python scripts/flywheel_config.py --get app.usage_log)
 wc -l "$LOG" 2>/dev/null || echo "usage log not yet created: $LOG"
 ```
 
-The simulation is complete. Usage data is ready for the feature-suggester.
-To run the full agentic cycle, invoke `/dev-loop`.
+The simulation is complete. Usage data is ready for the app's analyzer to turn
+into a signal report. To run the full agentic cycle, invoke `/dev-loop`.

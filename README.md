@@ -6,7 +6,7 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 
-The reference engagement onboards a new partner data source. The loop reads structured integration failures, proposes a bounded adapter change, runs an evaluator whose gold labels and scorer are protected from the planner, and requires approval before the tested patch lands.
+The reference engagement onboards a new partner data source. The loop reads structured integration failures, proposes a bounded adapter change, runs an evaluator whose gold labels and scorer are protected from the implementer subagent, and requires approval before the tested patch lands.
 
 It is a local benchmark harness, not an autonomous deployment product. The onboarding engagement below is both the primary evidence and the only bundled example.
 
@@ -32,9 +32,10 @@ The artifact trail contains the baseline, ranked gaps, adapter patch, patch hash
 | Delivery concern | Mechanism in this repository |
 |---|---|
 | Turn observed failure into a scoped engineering decision | Endpoint telemetry and engagement-specific gap analysis rank failed intent and affected records. |
-| Work safely with agent-generated changes | Read-only subagents return diffs; the parent validates protected paths and `git apply --check` before it writes. |
+| Work safely with agent-generated changes | The read-only implementer subagent returns a diff; the orchestrator validates protected paths and `git apply --check` (via `apply_patch.py`, the single guarded entry point) before it writes. |
 | Measure more than request success | An optional, protected evaluator scores domain correctness and regression against held-out truth. |
-| Generalize a one-off solution | The simulator, analyzer, controls, and configuration seam are generic; adapters and rules are engagement data. |
+| Answer "did it overfit the score, not the problem?" | A real-data test split (MaDI-Bench's own CSVs and gold) is scored once, offline, never during a cycle — a distribution the fitted dev-fixture adapter cannot transfer to. |
+| Generalize a one-off solution | The simulator, analyzer contract, controls, and configuration seam are generic; adapters, rules, and each engagement's own analyzer are engagement data. Two configs (dev, real-data test) already select two different datasets and oracles against the same loop. |
 | Preserve human accountability | Gate 1 approves scope. Gate 2 approves the exact tested patch. |
 
 ## Run it locally
@@ -67,7 +68,7 @@ flowchart LR
     A[Schema or replay] --> B[Simulator]
     B --> C[Telemetry]
     C --> D[Analyzer]
-    D --> E[Read-only proposal]
+    D --> E[Orchestrator proposal]
     E --> F{Gate 1}
     F --> G[Read-only diff]
     G --> H[Path checks + tests + evaluator]

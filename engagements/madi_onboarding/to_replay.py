@@ -18,13 +18,18 @@ ENGAGEMENT_DIR = Path(__file__).resolve().parent
 
 
 def to_specs(records: list[dict], source: str, schema_version: str = "v1"):
-    for rec in records:
+    for i, rec in enumerate(records):
+        # A record with no natural id (e.g. the real MaDI-Bench CSVs) would all
+        # hash to the same record_id_hash server-side, collapsing distinct
+        # records into one bucket in the integration-gap report. Give it an
+        # ordinal fallback id so telemetry can tell records apart.
+        record = rec if "record_id" in rec else {**rec, "record_id": f"{source}-{i}"}
         yield {
             "method": "POST",
             "path": "/ingest",
             "query": {},
-            "body": {"source_system": source, "schema_version": schema_version, "record": rec},
-            "meta": {"record_id": rec.get("record_id"), "source": source},
+            "body": {"source_system": source, "schema_version": schema_version, "record": record},
+            "meta": {"record_id": record.get("record_id"), "source": source},
         }
 
 

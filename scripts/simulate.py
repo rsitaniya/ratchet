@@ -23,9 +23,9 @@ fired in file order.
 Every fired request carries `X-Run-Id`, so one run's traffic can be isolated in
 the usage log without renaming the shared, server-owned file.
 
-It carries no domain knowledge of its own. Correlated edge cases (schema mode)
-come from `simulator.edge_cases`; the replay list (replay mode) comes from
-whatever produced the file.
+It carries no domain knowledge of its own: schema mode synthesizes values purely
+from the OpenAPI types and enums it discovers; the replay list (replay mode)
+comes from whatever produced the file.
 
 Usage:
     python scripts/simulate.py [BASE_URL] [N_REQUESTS] [--replay FILE] [--run-id ID]
@@ -43,17 +43,12 @@ from urllib.parse import urljoin, urlsplit
 from uuid import uuid4
 
 import httpx
-from flywheel_config import load_config, load_edge_cases
+from flywheel_config import load_config
 
 CONFIG = load_config()
 
 # Endpoints that *describe* the API rather than being part of it — skip them.
 SKIP_PATHS = {"/openapi.json", "/docs", "/redoc", "/docs/oauth2-redirect"}
-
-# Correlated edge cases, keyed by the value of an enum-driven param (e.g. `op`).
-# Loaded from the file named by [simulator].edge_cases in flywheel.toml, so the
-# simulator itself stays free of domain knowledge. Empty overlay is supported.
-DOMAIN_EDGE_CASES: dict[str, list[dict]] = load_edge_cases(CONFIG)
 
 
 def resolve_replay_path(cli_replay: str | None, config: dict) -> str | None:
@@ -237,14 +232,6 @@ def build_request(path: str, op_spec: dict, params: list[dict], root: dict):
     content = op_spec.get("requestBody", {}).get("content", {}).get("application/json", {})
     if content:
         json_body = gen_value(content.get("schema", {}), root)
-
-    # Optional domain overlay: if ANY generated param value matches a known
-    # edge-case key, inject correlated values (40%). Not tied to a specific
-    # param name — works for any enum-driven param the schema exposes.
-    for pval in list(query_params.values()):
-        if isinstance(pval, str) and pval in DOMAIN_EDGE_CASES and random.random() < 0.4:
-            query_params.update(random.choice(DOMAIN_EDGE_CASES[pval]))
-            break
 
     filled = path
     for name, val in path_params.items():

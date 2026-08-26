@@ -33,8 +33,11 @@ from engagements.madi_onboarding import adapters as A
 from engagements.madi_onboarding import fusion, matching, similarity
 
 ENGAGEMENT_DIR = Path(__file__).resolve().parent.parent
-TARGET_SCHEMA = json.loads((ENGAGEMENT_DIR / "fixtures" / "target_schema.json").read_text())
-ADAPTERS_DIR = ENGAGEMENT_DIR / "adapters"
+# Overridable so the same app can serve the real-data test split (flywheel.real.toml
+# points these at data/madi/target_schema.json and adapters_real/) without a fork.
+TARGET_SCHEMA_PATH = Path(os.environ.get("TARGET_SCHEMA_PATH", ENGAGEMENT_DIR / "fixtures" / "target_schema.json"))
+TARGET_SCHEMA = json.loads(TARGET_SCHEMA_PATH.read_text())
+ADAPTERS_DIR = Path(os.environ.get("ADAPTERS_DIR", ENGAGEMENT_DIR / "adapters"))
 
 # The launcher exports USAGE_LOG_PATH from [app].usage_log so server and
 # analyzer agree on the file.

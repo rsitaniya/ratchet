@@ -1,0 +1,8 @@
+# The real-data test split's forbes adapter. Starts with NO field mappings, same
+# as adapters/forbes.toml's synthetic counterpart — the fitted synthetic adapter
+# cannot transfer (real forbes columns share nothing with the synthetic ones), so
+# this is a genuine held-out distribution, not a subsample. The loop fills this
+# file in; evaluate.py scores it against gold_mapping.json under data/madi/.
+source = "forbes"
+
+[fields]

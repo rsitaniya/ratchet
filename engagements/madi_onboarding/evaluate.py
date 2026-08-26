@@ -28,7 +28,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 # Run directly as `python .../evaluate.py` (as documented above), a script has
@@ -61,7 +63,15 @@ def _f1(predicted: dict[str, str], gold: dict[str, str]) -> float:
 def evaluate_source(source: str, fixtures_dir: Path, adapters_dir: Path) -> dict:
     target_schema = json.loads((fixtures_dir / "target_schema.json").read_text())
     gold_mapping = json.loads((fixtures_dir / "gold_mapping.json").read_text()).get(source, {})
-    gold_records = {g["record_id"]: g for g in _load_jsonl(fixtures_dir / "gold_records.jsonl")}
+    # An absent gold_records.jsonl means no normalized-value gold is pinned for
+    # this fixtures set (true of the real-data test split, which only has
+    # sm_mapping_gold.json) — distinct from a present-but-empty file. Only
+    # schema_f1 and integrated_rate are measurable there; value_recall and
+    # fully_correct_rate report None below, never 0.0 (0.0 would misrepresent
+    # "unmeasured" as "measured and totally wrong").
+    gold_records_path = fixtures_dir / "gold_records.jsonl"
+    has_value_gold = gold_records_path.exists()
+    gold_records = {g["record_id"]: g for g in _load_jsonl(gold_records_path)} if has_value_gold else {}
     records = _load_jsonl(fixtures_dir / "sources" / f"{source}.jsonl")
     adapter = A.load_adapter(source, adapters_dir)
 
@@ -77,7 +87,10 @@ def evaluate_source(source: str, fixtures_dir: Path, adapters_dir: Path) -> dict
         res = A.apply_adapter(rec, adapter, target_schema)
         if res["integrated"]:
             integrated += 1
-        gold = {k: v for k, v in gold_records.get(rec["record_id"], {}).items() if k != "record_id"}
+        # .get(), not indexing: real-source records (no gold_records.jsonl pinned)
+        # carry no record_id at all — gold_records is always {} there, so the
+        # lookup key is moot, but indexing would still raise.
+        gold = {k: v for k, v in gold_records.get(rec.get("record_id"), {}).items() if k != "record_id"}
         rec_all_correct = bool(gold)
         for attr, gold_val in gold.items():
             total_values += 1
@@ -93,9 +106,10 @@ def evaluate_source(source: str, fixtures_dir: Path, adapters_dir: Path) -> dict
         "records": n,
         "schema_f1": round(schema_f1, 4),
         # Recall of gold values: correct ÷ number of gold attribute values.
-        "value_recall": round(correct_values / total_values, 4) if total_values else 0.0,
+        # None when this fixtures set has no gold_records.jsonl at all.
+        "value_recall": (round(correct_values / total_values, 4) if total_values else 0.0) if has_value_gold else None,
         "integrated_rate": round(integrated / n, 4) if n else 0.0,
-        "fully_correct_rate": round(fully_correct / n, 4) if n else 0.0,
+        "fully_correct_rate": (round(fully_correct / n, 4) if n else 0.0) if has_value_gold else None,
     }
 
 
@@ -163,7 +177,14 @@ def _detect_regressions(current: dict, baseline: dict) -> list[str]:
     regressions = []
     for source, base in baseline.get("per_source", {}).items():
         cur = current.get("per_source", {}).get(source)
-        if cur and cur["fully_correct_rate"] < base["fully_correct_rate"]:
+        # None means "no value gold for this source" (real-data test split) — not
+        # comparable to a float, and not itself a regression.
+        if (
+            cur
+            and cur["fully_correct_rate"] is not None
+            and base["fully_correct_rate"] is not None
+            and cur["fully_correct_rate"] < base["fully_correct_rate"]
+        ):
             regressions.append(source)
     b_rec, c_rec = baseline.get("reconcile"), current.get("reconcile")
     if b_rec and c_rec:
@@ -195,6 +216,20 @@ def main(argv: list[str] | None = None) -> None:
         result["regressions"] = regressions
         result["regression"] = bool(regressions)
     print(json.dumps(result, indent=2))
+
+    # Evaluator-invocation budget as a mechanism, not orchestrator prose: an
+    # agent measurement run (Phase 3) sets FLYWHEEL_EVAL_LOG and reads this back
+    # to report how many times the oracle was consulted per trial.
+    log_path = os.environ.get("FLYWHEEL_EVAL_LOG")
+    if log_path:
+        with open(log_path, "a") as f:
+            f.write(json.dumps({
+                "timestamp": datetime.now(UTC).isoformat(),
+                "sources": args.sources,
+                "adapters": args.adapters,
+                "baseline": bool(args.baseline),
+                "regression": result.get("regression"),
+            }) + "\n")
 
 
 if __name__ == "__main__":

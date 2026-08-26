@@ -1,8 +1,10 @@
 """Loads flywheel.toml — the seam between the generic loop and one specific API.
 
-Both the simulator and the usage analyzer read their domain knowledge from here
-rather than hardcoding it, so pointing the flywheel at a different FastAPI app is
-a config edit rather than a code edit. See docs/ADAPTING.md.
+The simulator reads its domain knowledge from here rather than hardcoding it, so
+pointing the flywheel at a different FastAPI app is a config edit rather than a
+code edit. See docs/ADAPTING.md. `[app].analyzer` is required, not optional:
+there is no generic fallback analyzer — an engagement's telemetry shape is its
+own, so its gap-ranker is too.
 
 Which config file is active is chosen by (in order): an explicit path argument,
 the FLYWHEEL_CONFIG environment variable, then the repo-root flywheel.toml. This
@@ -10,14 +12,20 @@ lets more than one app (e.g. engagements under engagements/) run its own loop
 without disturbing another's. Path-valued keys are resolved against the
 config file's own directory, so an engagement config refers to its own files.
 
-Every value has a working default: a missing flywheel.toml is not an error.
+A missing config is not an error when it is *implicit* (no path argument, no
+FLYWHEEL_CONFIG set — the repo-root default, which no longer exists since the
+calculator example was removed): every value has a working default, and tools
+like the simulator legitimately run with no app selected. An *explicit*
+FLYWHEEL_CONFIG that names a file that does not exist is different: it is an
+operator typo, and silently falling back to defaults there would mean a
+security-relevant key like [protected].paths goes from "the intended engagement's
+list" to "empty" with no signal. config_path() raises for that case only.
 
 As a CLI, prints one value so shell steps can stay generic:
     python scripts/flywheel_config.py --get app.module
 """
 from __future__ import annotations
 
-import json
 import os
 import tomllib
 from pathlib import Path
@@ -31,23 +39,25 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "module": "myservice.api:app",
         "base_url": "http://localhost:8000",
         "usage_log": "usage_log.jsonl",
+        # Optional overrides for the app's target schema / adapters directory —
+        # empty means "use the app's own hardcoded default." Only a config that
+        # points the app at a different dataset (e.g. the real-data test split)
+        # needs to set these.
+        "target_schema": "",
+        "adapters_dir": "",
         "version_files": [],
         # Optional command the dev-loop runs at Gate 2 to score a proposed patch
         # against held-out truth. Empty for apps without an evaluator.
         "evaluator": "",
-        # Optional analyzer command the dev-loop runs to turn the usage log into
-        # the signal report the feature-suggester reads. Empty → the generic HTTP
-        # analyzer (scripts/analyze_usage.py); an engagement points it at its own
-        # domain gap-ranker. A command, not a path, so it is not resolved.
+        # Required command the dev-loop runs to turn the usage log into the
+        # signal report STEP 2 proposes from. Empty here only because DEFAULTS
+        # supports apps with no config file at all (see config_path()) — every
+        # engagement that wants /dev-loop to run STEP 2 must set this. A
+        # command, not a path, so it is not resolved.
         "analyzer": "",
     },
     "simulator": {
-        "edge_cases": "edge_cases.json",
         "default_requests": 30,
-    },
-    "signals": {
-        "numeric_params": [],
-        "zero_value_params": [],
     },
     "traffic": {
         "replay_file": "",
@@ -64,18 +74,34 @@ DEFAULTS: dict[str, dict[str, Any]] = {
 # refers to its own files, not the repo root's. Non-path keys (module, base_url)
 # are deliberately excluded — resolving them would corrupt import paths and URLs.
 PATH_KEYS: dict[str, tuple[str, ...]] = {
-    "app": ("usage_log",),
-    "simulator": ("edge_cases",),
+    "app": ("usage_log", "target_schema", "adapters_dir"),
     "traffic": ("replay_file",),
 }
 
 
 def config_path(path: Path | str | None = None) -> Path:
-    """Resolve which config file to load: explicit arg > $FLYWHEEL_CONFIG > default."""
+    """Resolve which config file to load: explicit arg > $FLYWHEEL_CONFIG > default.
+
+    Raises FileNotFoundError only when $FLYWHEEL_CONFIG is set and does not
+    exist — an operator typo, not a supported "no app selected" state. An
+    explicit `path` argument and the repo-root default both stay permissive:
+    a caller that resolved its own path (or the implicit default when no
+    config was named at all) is a mode this loader has always supported, and
+    load_config() already handles a nonexistent path there by returning
+    defaults.
+    """
     if path is not None:
         return Path(path)
     env = os.environ.get("FLYWHEEL_CONFIG")
-    return Path(env) if env else DEFAULT_CONFIG_PATH
+    if not env:
+        return DEFAULT_CONFIG_PATH
+    env_path = Path(env)
+    if not env_path.exists():
+        raise FileNotFoundError(
+            f"FLYWHEEL_CONFIG={env!r} does not exist. Fix the path, or unset "
+            f"FLYWHEEL_CONFIG to fall back to {DEFAULT_CONFIG_PATH}."
+        )
+    return env_path
 
 
 def load_config(path: Path | str | None = None) -> dict[str, dict[str, Any]]:
@@ -110,24 +136,6 @@ def load_config(path: Path | str | None = None) -> dict[str, dict[str, Any]]:
     return merged
 
 
-def load_edge_cases(config: dict[str, dict[str, Any]] | None = None) -> dict[str, list[dict]]:
-    """Return the correlated edge-case overlay, or {} if none is configured.
-
-    An absent or empty overlay is a supported mode, not a failure: the simulator
-    still exercises every endpoint using values synthesized from the schema alone.
-    Keys beginning with "_" are documentation and are dropped.
-    """
-    config = config or load_config()
-    path_str = config["simulator"].get("edge_cases")
-    if not path_str:
-        return {}
-    path = Path(path_str)  # already resolved to absolute by load_config
-    if not path.exists():
-        return {}
-    data = json.loads(path.read_text())
-    return {k: v for k, v in data.items() if not k.startswith("_") and isinstance(v, list)}
-
-
 def get_value(dotted: str, config: dict[str, dict[str, Any]] | None = None) -> Any:
     """Return one config value named as SECTION.KEY (e.g. "app.module")."""
     section, _, key = dotted.partition(".")
@@ -147,6 +155,8 @@ def main(argv: list[str] | None = None) -> None:
         val = get_value(args.get)
     except KeyError:
         raise SystemExit(f"no such config key: {args.get!r}") from None
+    except FileNotFoundError as e:
+        raise SystemExit(str(e)) from None
     if isinstance(val, list):
         print(" ".join(map(str, val)))
     else:

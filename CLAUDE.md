@@ -1,8 +1,11 @@
 # dev-flywheel — Agentic Dev Loop
 
-The loop is the project, not any one app it runs against. Domain knowledge lives in
-a `flywheel.toml`, an optional `edge_cases.json`, and per-engagement packages under
-`engagements/` only — see `docs/ADAPTING.md`.
+The orchestration, traffic generation, diff validation, and gates are domain-free;
+everything domain-specific is named in one `flywheel.toml` and an
+`engagements/<name>/` package — see `docs/ADAPTING.md`. Two configs in this repo
+select two different datasets, protected sets, and oracles against the same loop:
+`engagements/madi_onboarding/flywheel.toml` (synthetic dev fixtures, scored every
+cycle) and `flywheel.real.toml` (real MaDI-Bench data, the held-out test split).
 
 The reference engagement, `engagements/madi_onboarding/`, points the generic loop
 at a partner-data onboarding API benchmarked on MaDI-Bench, with a **held-out
@@ -36,30 +39,30 @@ uv run python engagements/madi_onboarding/to_replay.py --source forbes
 
 | File | Purpose |
 |------|---------|
-| `flywheel.toml` | **The only seam between the loop and a specific API** — app module, version files, signal params. One per app; the shipped example is `engagements/madi_onboarding/flywheel.toml` |
-| `edge_cases.json` | Correlated domain edge cases for the simulator (optional; grown by the loop each cycle). One per app; MaDI onboarding ships without one — the simulator falls back to schema-driven synthesis |
+| `flywheel.toml` | **The only seam between the loop and a specific API** — app module, evaluator, required analyzer, protected paths. One per app/split; this repo ships `engagements/madi_onboarding/flywheel.toml` (dev) and `flywheel.real.toml` (test) |
 | `usage_log.jsonl` | Runtime product signal (gitignored; auto-created by API traffic) |
 | `scripts/simulate.py` | Schema-driven simulator (called by /simulate skill) |
-| `scripts/analyze_usage.py` | Turns the raw log into the signal report the feature-suggester reads |
 | `scripts/flywheel_config.py` | Loads the active `flywheel.toml` (via `FLYWHEEL_CONFIG`); `--get KEY` accessor for shell steps |
-| `scripts/check_protected_paths.py` | Rejects any patch touching held-out evaluators/gold/fixtures (`[protected].paths`) |
-| `engagements/madi_onboarding/` | Reference engagement: partner-data onboarding, ingest app, adapters, protected evaluator, case study |
+| `scripts/check_protected_paths.py` | Rejects any patch touching held-out evaluators/gold/fixtures/`runs/` (`[protected].paths`); fails closed if no config resolves |
+| `scripts/apply_patch.py` | The single guarded entry point for landing a patch — runs the protected-path guard, `git apply --check`, and `git apply`, in that order |
+| `engagements/madi_onboarding/` | Reference engagement: partner-data onboarding, ingest app, adapters, protected evaluator, its own analyzer, case study |
 | `tests/` | FastAPI TestClient tests — run with `uv run pytest tests/ -v` |
 | `CHANGELOG.md` | Updated each cycle by the orchestrator |
 | `docs/ADAPTING.md` | How to point the loop at your own API |
-| `.claude/agents/` | Subagent definitions (read-only — orchestrator writes) |
-| `.claude/skills/` | Orchestrator skills: simulate, dev-loop |
+| `.claude/agents/` | The `implementer` subagent (read-only — orchestrator writes) |
+| `.claude/skills/` | Orchestrator skills: simulate, dev-loop, dev-loop-trial |
 
 ## Conventions
 
-- **Subagents are read-only planners.** Implementer/docs-updater return standard unified diffs; the dev-loop orchestrator validates with `git apply --check` before applying.
+- **One subagent, `implementer`, and its restriction is mechanical.** It holds `Read, Grep, Glob` — no Bash, no Edit, no Write — so a returned diff is its only mutation path, and Claude Code's own deny rules block it from reading fixtures, gold, or `runs/` at the tool level. Everything else in the loop (feature proposal, the guard, the evaluator, version bumps) is deterministic code or a human at one of the two gates — not a second or third subagent role.
 - **Tests use FastAPI TestClient** (in-process). The simulator uses httpx against the live server.
 - **Server must be running** before invoking /simulate or /dev-loop.
 - **usage_log.jsonl is runtime telemetry.** It is append-only during a run, but gitignored so local simulator traffic does not dirty the submission.
 - **Loop closure:** The simulator re-fetches /openapi.json each cycle, so new endpoints are exercised automatically without editing the simulator.
-- **Continuous mode:** Use `/loop /dev-loop`; `/dev-loop` itself is one complete cycle.
-- **No domain knowledge in the loop.** `scripts/` and `.claude/` must stay generic. Anything app-specific belongs in `flywheel.toml`, `edge_cases.json`, or an `engagements/<name>/` package. All degrade gracefully when absent.
-- **Two human gates + a protected evaluator.** The loop blocks at Gate 1 (approve the proposal) and Gate 2 (approve the exact tested patch after the app's `[app].evaluator` runs). The implementer may never edit paths in `[protected].paths` (held-out evaluator, gold, fixtures) — `check_protected_paths.py` enforces this before `git apply`.
+- **Continuous mode:** Use `/loop /dev-loop`; `/dev-loop` itself is one complete cycle. `/dev-loop-trial` is a separate measurement mode that auto-answers both gates to measure agent convergence — never a mode for landing real changes.
+- **No domain knowledge in the loop.** `scripts/` and `.claude/` must stay generic. Anything app-specific belongs in `flywheel.toml` or an `engagements/<name>/` package's own analyzer (`[app].analyzer` is required — there is no generic fallback). All degrade gracefully when absent.
+- **Every patch goes through `scripts/apply_patch.py`, never `git apply` directly.** It is the single entry point that runs the protected-path guard, `git apply --check`, and `git apply`, in that fixed order; `.claude/settings.json` also denies `Bash(git apply:*)` directly. Not an OS-level boundary — the orchestrator holds Bash and could still evade it deliberately — but there is no longer a path that skips the guard by omission. See `SECURITY.md`.
+- **Two human gates + a protected evaluator.** The loop blocks at Gate 1 (approve the proposal) and Gate 2 (approve the exact tested patch after the app's `[app].evaluator` runs). The implementer may never edit paths in `[protected].paths` (held-out evaluator, gold, fixtures, `runs/`) — `check_protected_paths.py` enforces this and fails closed if no config resolves.
 - **Adapters are data.** An engagement grows mostly by adding declarative config the app reads (e.g. onboarding adapters), not agent-written code; new code is reserved for genuinely new behavior and is covered by tests + the evaluator.
 
 ## Writing style — no AI slop

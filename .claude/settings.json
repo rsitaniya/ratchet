@@ -4,9 +4,12 @@
       "Read(**/fixtures/**)",
       "Read(**/gold_*.json)",
       "Read(**/*_gold.json)",
+      "Read(**/runs/**)",
       "Grep(**/fixtures/**)",
       "Grep(**/gold_*.json)",
-      "Grep(**/*_gold.json)"
+      "Grep(**/*_gold.json)",
+      "Grep(**/runs/**)",
+      "Bash(git apply:*)"
     ]
   }
 }

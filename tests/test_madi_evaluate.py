@@ -1,4 +1,5 @@
 """Tests for the protected held-out evaluator (the semantic oracle)."""
+import json
 import tomllib
 from pathlib import Path
 
@@ -87,6 +88,62 @@ def test_regression_detection(tmp_path):
     (d / "dbpedia.toml").write_text(toml_wo_country)
     current = E.evaluate(["dbpedia"], FIX, d)
     assert E._detect_regressions(current, baseline) == ["dbpedia"]
+
+
+def test_regression_detection_skips_none_value_metrics(tmp_path):
+    # A source with no gold_records.jsonl (the real-data test split) reports
+    # fully_correct_rate=None. Comparing None to a float must not raise, and
+    # must not be reported as a regression either direction.
+    baseline = {"per_source": {"forbes": {"fully_correct_rate": None}}}
+    current = {"per_source": {"forbes": {"fully_correct_rate": 0.5}}}
+    assert E._detect_regressions(current, baseline) == []
+    baseline2 = {"per_source": {"forbes": {"fully_correct_rate": 0.5}}}
+    current2 = {"per_source": {"forbes": {"fully_correct_rate": None}}}
+    assert E._detect_regressions(current2, baseline2) == []
+
+
+def test_evaluate_source_without_gold_records_reports_none(tmp_path):
+    # Real-data test split: fixtures dir has target_schema.json, gold_mapping.json,
+    # and sources/, but no gold_records.jsonl (no value gold pinned).
+    fx = tmp_path / "fixtures"
+    (fx / "sources").mkdir(parents=True)
+    (fx / "target_schema.json").write_text(
+        json.dumps({"attributes": {"name": {"required": True}}})
+    )
+    (fx / "gold_mapping.json").write_text(json.dumps({"forbes": {"name": "name"}}))
+    (fx / "sources" / "forbes.jsonl").write_text(
+        json.dumps({"record_id": "1", "name": "Acme"}) + "\n"
+    )
+    adir = tmp_path / "adapters"
+    adir.mkdir()
+    (adir / "forbes.toml").write_text(
+        'source = "forbes"\n[fields.name]\ntarget = "name"\nnormalizer = "identity"\n'
+    )
+    res = E.evaluate_source("forbes", fx, adir)
+    assert res["value_recall"] is None
+    assert res["fully_correct_rate"] is None
+    assert res["schema_f1"] == 1.0
+    assert res["integrated_rate"] == 1.0
+
+
+def test_evaluate_source_handles_records_with_no_record_id(tmp_path):
+    # Real MaDI-Bench CSVs (unlike the synthetic fixtures) carry no record_id
+    # column at all. With no gold_records.jsonl pinned, this must not raise.
+    fx = tmp_path / "fixtures"
+    (fx / "sources").mkdir(parents=True)
+    (fx / "target_schema.json").write_text(
+        json.dumps({"attributes": {"name": {"required": True}}})
+    )
+    (fx / "gold_mapping.json").write_text(json.dumps({"forbes": {"company": "name"}}))
+    (fx / "sources" / "forbes.jsonl").write_text(json.dumps({"company": "Acme"}) + "\n")
+    adir = tmp_path / "adapters"
+    adir.mkdir()
+    (adir / "forbes.toml").write_text(
+        'source = "forbes"\n[fields.company]\ntarget = "name"\nnormalizer = "identity"\n'
+    )
+    res = E.evaluate_source("forbes", fx, adir)
+    assert res["integrated_rate"] == 1.0
+    assert res["value_recall"] is None
 
 
 def test_full_forbes_toml_is_valid():

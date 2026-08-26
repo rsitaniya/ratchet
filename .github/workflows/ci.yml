@@ -67,10 +67,9 @@ jobs:
           uv run python engagements/madi_onboarding/analyze_integration.py "$USAGE_LOG_PATH" --source forbes
 
       # Proves the claim the whole project rests on: with FLYWHEEL_CONFIG unset,
-      # flywheel_config.py falls back to defaults (no replay file, no edge
-      # cases, no signals declared), and the simulator still discovers and
-      # exercises this real, non-trivial app's endpoints from /openapi.json
-      # alone. Most synthesized requests 422 (schema-random values don't match
+      # flywheel_config.py falls back to defaults (no replay file declared), and
+      # the simulator still discovers and exercises this real, non-trivial app's
+      # endpoints from /openapi.json alone. Most synthesized requests 422 (schema-random values don't match
       # a real record) — that's expected and fine; simulate.py always exits 0
       # regardless of HTTP status, so it cannot fail this step on its own. What
       # DOES fail it: any "EXC"-tagged line (a transport failure — fire() caught
@@ -152,6 +151,81 @@ jobs:
             fi
             echo "correctly rejected: $p"
           done
+
+      # The committed receipts under runs/ are the evidence for the README and
+      # CASE_STUDY numbers. Nothing enforced that they stay honest as the engines
+      # they were computed from changed, so recompute every one from its committed
+      # snapshot (adapter TOML / matching+fusion rules) and diff against the
+      # committed JSON — and separately confirm every *.diff still hashes to its
+      # recorded *.diff_hash.txt. A stale receipt fails CI, not a future reader.
+      - name: Receipts reproduce byte-for-byte from their committed snapshots
+        run: |
+          uv run python - <<'PY'
+          import json, tomllib
+          from pathlib import Path
+          from engagements.madi_onboarding import evaluate as E, adapters as A
+
+          FX = Path("engagements/madi_onboarding/fixtures")
+          ADAPTERS = Path("engagements/madi_onboarding/adapters")
+          RUNS = Path("engagements/madi_onboarding/runs")
+          real_load = A.load_adapter
+
+          def score_forbes(adapter_snapshot: Path) -> dict:
+              data = tomllib.loads(adapter_snapshot.read_text())
+
+              def fake(source, adapters_dir=None):
+                  if source == "forbes":
+                      return {"source": "forbes", "fields": data.get("fields", {})}
+                  return real_load(source, adapters_dir)
+
+              A.load_adapter = fake
+              try:
+                  return {s: E.evaluate_source(s, FX, ADAPTERS) for s in ("dbpedia", "forbes")}
+              finally:
+                  A.load_adapter = real_load
+
+          METRICS = ("schema_f1", "value_recall", "integrated_rate", "fully_correct_rate")
+          for cycle, adapter_name in (
+              ("00_baseline", "00_baseline.adapter.toml"),
+              ("01_cycle1", "01_cycle1.adapter.toml"),
+              ("02_cycle2", "02_cycle2.adapter.toml"),
+          ):
+              recomputed = score_forbes(RUNS / "forbes" / adapter_name)
+              recorded = json.loads((RUNS / "forbes" / f"{cycle}.evaluate.json").read_text())["per_source"]
+              for source in ("dbpedia", "forbes"):
+                  for k in METRICS:
+                      assert recomputed[source][k] == recorded[source][k], (
+                          f"forbes/{cycle}: {source}.{k} recomputed={recomputed[source][k]} "
+                          f"!= committed={recorded[source][k]}"
+                      )
+
+          for cycle, matching_snap, fusion_snap in (
+              ("00_baseline", "00_baseline.matching_rules.toml", "00_baseline.fusion_rules.toml"),
+              ("01_cycle1", "01_cycle1.matching_rules.toml", "00_baseline.fusion_rules.toml"),
+              ("02_cycle2", "01_cycle1.matching_rules.toml", "02_cycle2.fusion_rules.toml"),
+          ):
+              recomputed = E.evaluate_reconcile(
+                  FX,
+                  matching_rules_path=RUNS / "reconcile" / matching_snap,
+                  fusion_rules_path=RUNS / "reconcile" / fusion_snap,
+              )
+              recorded = json.loads((RUNS / "reconcile" / f"{cycle}.evaluate.json").read_text())["reconcile"]
+              assert recomputed["entity_matching"]["f1"] == recorded["entity_matching"]["f1"], cycle
+              assert recomputed["fusion"]["accuracy"] == recorded["fusion"]["accuracy"], cycle
+
+          print("receipts OK: every forbes and reconcile cycle reproduces from its committed snapshot")
+          PY
+
+          for f in engagements/madi_onboarding/runs/forbes/*.diff engagements/madi_onboarding/runs/reconcile/*.diff; do
+            dir=$(dirname "$f")
+            cycle=$(basename "$f" | cut -d. -f1)   # e.g. "01_cycle1.adapter.diff" → "01_cycle1"
+            recorded=$(cat "$dir/$cycle.diff_hash.txt")
+            actual=$(git hash-object "$f")
+            if [ "$recorded" != "$actual" ]; then
+              echo "ERROR: $f hashes to $actual, recorded hash is $recorded"; exit 1
+            fi
+          done
+          echo "diff hashes OK: every runs/*.diff matches its committed *.diff_hash.txt"
 
       # Reproducibility check: the pinned downloader fetches the real MaDI data and
       # verifies git blob SHAs. Non-fatal so external availability never reds CI.

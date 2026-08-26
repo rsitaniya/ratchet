@@ -1,0 +1,12 @@
+{
+  "per_source": {
+    "forbes": {
+      "source": "forbes",
+      "records": 2000,
+      "schema_f1": 0.0,
+      "value_recall": null,
+      "integrated_rate": 0.0,
+      "fully_correct_rate": null
+    }
+  }
+}

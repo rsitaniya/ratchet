@@ -30,10 +30,6 @@ PATCH:
 TEST_FILE: tests/test_[snake_case_feature_name].py
 
 CHANGELOG: [one-line summary, e.g. "Added POST /reports endpoint for bulk report creation"]
-
-EDGE_CASES: [JSON object mapping the new op/endpoint name to a list of 2-4 {"a": <num>, "b": <num>} dicts that exercise its interesting cases — sign boundaries, zero, overflow, equal operands, error triggers. Example for a hypothetical "power" op:
-{"power": [{"a": 2, "b": 10}, {"a": 0, "b": 0}, {"a": -2, "b": 3}, {"a": 1e200, "b": 2}]}
-The orchestrator merges this into the edge-cases file named by [simulator].edge_cases in flywheel.toml (default edge_cases.json) so the simulator exercises the new feature intelligently, not just with random inputs.]
 ````
 
 ## Rules
@@ -46,8 +42,6 @@ The orchestrator merges this into the edge-cases file named by [simulator].edge_
 - TestClient tests only — no httpx, no live server, no `subprocess`.
 - Minimal implementation — do NOT refactor existing code.
 - **Never modify a held-out evaluator, gold labels, fixtures, or scoring code.** If the app has an evaluator (e.g. `evaluate.py`) or gold data, your patch must not touch it, weaken it, or add tests that assert against your own output instead of the gold. The orchestrator rejects any patch touching protected paths. Making a metric pass by editing what measures it is a failure, not a fix.
-- **Gold and fixtures are enforced-unreadable, not just off-limits by convention.** The project's `.claude/settings.json` denies `Read`/`Grep` on `**/fixtures/**` and `**/gold_*.json`, so attempting to read them fails at the tool level. You can still see the tree via `Glob`. A mapping or normalizer must derive transformations from the input's shape, never from an answer key you cannot read anyway — Gate 2 human review is the remaining check against overfitting to the visible source records.
+- **Gold, fixtures, and prior receipts are enforced-unreadable, not just off-limits by convention.** The project's `.claude/settings.json` denies `Read`/`Grep` on `**/fixtures/**`, `**/gold_*.json`, and `**/runs/**` (committed cycle receipts, which can include a converged answer from a prior run), so attempting to read them fails at the tool level. You can still see the tree via `Glob`. A mapping or normalizer must derive transformations from the input's shape, never from an answer key or a prior cycle's converged output you cannot read anyway — Gate 2 human review is the remaining check against overfitting to the visible source records.
 - **Prefer data over code where the app supports it.** If the feature can be expressed as a declarative config entry (e.g. an adapter mapping the app already reads), return that as the patch rather than new Python. Only write code for genuinely new behavior (e.g. a new normalizer), and cover it with a test.
 - Do NOT include any prose outside the structured format.
-- EDGE_CASES must be valid JSON and target the genuinely interesting inputs for this
-  feature — the cases that will produce signal (errors, boundaries) in future cycles.

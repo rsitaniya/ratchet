@@ -15,13 +15,13 @@
 module = "myservice.api:app"
 base_url = "http://localhost:8000"
 version_files = ["myservice/api.py", "pyproject.toml", "CHANGELOG.md"]
-
-[signals]
-numeric_params = ["amount"]
-zero_value_params = ["amount"]
+# Required: the loop has no generic fallback analyzer. Point it at a script that
+# turns the usage log into a ranked signal report (see analyze_integration.py
+# for the shape /dev-loop STEP 2 expects).
+analyzer = "python myservice/analyze.py"
 ```
 
-Select a non-root configuration with `FLYWHEEL_CONFIG=path/to/flywheel.toml`. Paths such as `usage_log`, `edge_cases`, and a replay file resolve relative to that configuration.
+Select a non-root configuration with `FLYWHEEL_CONFIG=path/to/flywheel.toml`. Paths such as `usage_log` and a replay file resolve relative to that configuration. `FLYWHEEL_CONFIG` pointing at a file that does not exist is an error, not a silent fallback — fix the path or unset it.
 
 ## Required telemetry shape
 
@@ -35,11 +35,9 @@ Copy and adapt the `usage_logger` middleware in `engagements/madi_onboarding/app
 
 | Need | Configuration / component |
 |---|---|
-| Correlated inputs | `edge_cases.json` |
 | Reproducible traffic | `traffic.replay_file` or `simulate.py --replay` |
 | Domain correctness beyond HTTP | `[app].evaluator` |
 | Evaluator, gold, fixture, or scoring protection | `[protected].paths` |
-| Richer signal than HTTP rates | Engagement-specific analyzer |
 
 An evaluator must emit JSON and accept `--baseline FILE` when regression matters. The implementer must not be able to modify its scorer, labels, or fixtures. This is a workflow boundary, not a production security boundary; see [SECURITY.md](../SECURITY.md).
 

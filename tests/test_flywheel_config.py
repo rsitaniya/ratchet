@@ -7,9 +7,8 @@ tests pin the multi-app behavior:
   - non-path keys (module, base_url) are left untouched,
   - $FLYWHEEL_CONFIG and an explicit path argument both select the config.
 """
-import json
-
 import flywheel_config
+import pytest
 
 
 def _write_config(tmp_path, body: str):
@@ -42,11 +41,11 @@ def test_unknown_section_survives(tmp_path):
 def test_path_keys_resolve_against_config_dir(tmp_path):
     cfg = _write_config(
         tmp_path,
-        '[app]\nusage_log = "logs/u.jsonl"\n[simulator]\nedge_cases = "ec.json"\n',
+        '[app]\nusage_log = "logs/u.jsonl"\n[traffic]\nreplay_file = "r.jsonl"\n',
     )
     conf = flywheel_config.load_config(cfg)
     assert conf["app"]["usage_log"] == str((tmp_path / "logs/u.jsonl").resolve())
-    assert conf["simulator"]["edge_cases"] == str((tmp_path / "ec.json").resolve())
+    assert conf["traffic"]["replay_file"] == str((tmp_path / "r.jsonl").resolve())
 
 
 def test_non_path_keys_are_not_rewritten(tmp_path):
@@ -74,6 +73,24 @@ def test_env_var_selects_config(tmp_path, monkeypatch):
     assert conf["app"]["module"] == "from.env:app"
 
 
+def test_env_var_pointing_at_missing_file_raises(monkeypatch, tmp_path):
+    # A typo'd FLYWHEEL_CONFIG must fail loudly, not silently fall back to
+    # defaults — silent fallback would mean [protected].paths goes from "the
+    # intended engagement's list" to [] with no signal to the operator.
+    monkeypatch.setenv("FLYWHEEL_CONFIG", str(tmp_path / "does-not-exist.toml"))
+    with pytest.raises(FileNotFoundError, match="FLYWHEEL_CONFIG"):
+        flywheel_config.load_config()
+
+
+def test_explicit_missing_path_still_permissive(tmp_path):
+    # Distinct from the env-var case: a caller that resolves its own path (or
+    # the implicit repo-root default, tested above) keeps the original
+    # "missing config is a supported mode" contract. Only $FLYWHEEL_CONFIG
+    # pointing nowhere is treated as an operator error.
+    conf = flywheel_config.load_config(tmp_path / "nope.toml")
+    assert conf["app"]["module"] == "myservice.api:app"
+
+
 def test_explicit_path_beats_env(tmp_path, monkeypatch):
     env_cfg = _write_config(tmp_path, '[app]\nmodule = "from.env:app"\n')
     arg_cfg = tmp_path / "other.toml"
@@ -96,27 +113,15 @@ def test_two_configs_get_distinct_usage_logs(tmp_path):
     assert log_a != log_b
 
 
-def test_load_edge_cases_reads_resolved_path(tmp_path):
-    cfg = _write_config(tmp_path, '[simulator]\nedge_cases = "ec.json"\n')
-    (tmp_path / "ec.json").write_text(json.dumps({"_doc": "ignored", "add": [{"a": 1, "b": 2}]}))
-    conf = flywheel_config.load_config(cfg)
-    ec = flywheel_config.load_edge_cases(conf)
-    assert ec == {"add": [{"a": 1, "b": 2}]}
-
-
-def test_load_edge_cases_absent_file_is_empty(tmp_path):
-    cfg = _write_config(tmp_path, '[simulator]\nedge_cases = "missing.json"\n')
-    conf = flywheel_config.load_config(cfg)
-    assert flywheel_config.load_edge_cases(conf) == {}
-
-
 def test_analyzer_defaults_empty_and_is_not_path_resolved(tmp_path):
     # app.analyzer is a command, not a path: it must survive verbatim, not be
     # rewritten relative to the config dir (that would corrupt the command).
     cfg = _write_config(tmp_path, '[app]\nanalyzer = "python engagements/x/analyze.py --source s"\n')
     conf = flywheel_config.load_config(cfg)
     assert conf["app"]["analyzer"] == "python engagements/x/analyze.py --source s"
-    # A config that omits it gets the empty default (→ generic analyzer).
+    # A config that omits it gets the empty default. There is no generic
+    # fallback analyzer — /dev-loop STEP 2 treats empty as "not configured"
+    # and aborts, rather than silently running against the wrong telemetry shape.
     d = tmp_path / "d"
     d.mkdir()
     assert flywheel_config.load_config(_write_config(d, "[app]\n"))["app"]["analyzer"] == ""
