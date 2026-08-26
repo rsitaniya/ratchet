@@ -69,9 +69,23 @@ def resolve_replay_path(cli_replay: str | None, config: dict) -> str | None:
 
 
 def load_replay_specs(path: str) -> list[dict]:
-    """Parse a replay jsonl file into request specs, skipping blank lines."""
-    lines = [ln for ln in Path(path).read_text().splitlines() if ln.strip()]
-    return [json.loads(ln) for ln in lines]
+    """Parse a replay jsonl file into request specs, skipping blank lines.
+
+    A truncated write or a hand-edited line raises a plain `JSONDecodeError`
+    pointing into json's internals, with no hint which line or file is bad —
+    diagnose it here instead, same as `fetch_schema`.
+    """
+    specs = []
+    for lineno, ln in enumerate(Path(path).read_text().splitlines(), start=1):
+        if not ln.strip():
+            continue
+        try:
+            specs.append(json.loads(ln))
+        except json.JSONDecodeError as e:
+            raise RuntimeError(
+                f"{path}:{lineno}: not valid JSON ({e}) — line starts: {ln[:200]!r}"
+            ) from e
+    return specs
 
 
 def safe_url(base_url: str, path: str) -> str:

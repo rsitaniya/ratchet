@@ -6,6 +6,7 @@ ops. The usage log is redirected to a temp file by tests/conftest.py, so these
 read `app.main.USAGE_LOG` rather than the real product signal.
 """
 import json
+from concurrent.futures import ThreadPoolExecutor
 
 from fastapi.testclient import TestClient
 
@@ -58,6 +59,27 @@ def test_run_id_absent_is_null():
     recs = [r for r in _records() if r.get("path") == "/calculate"]
     assert "run_id" in recs[-1], "run_id field must always be present"
     assert recs[-1]["run_id"] is None, "run_id defaults to null when the header is absent"
+
+
+def test_concurrent_requests_produce_well_formed_usage_log():
+    # The write path is a single `.open("a")` + one `.write()` per record — a
+    # POSIX append is atomic under PIPE_BUF, so concurrent writers must never
+    # interleave into a corrupt or dropped line. Prove it under real thread
+    # concurrency rather than trusting the POSIX guarantee by inspection alone.
+    n = 60
+    run_id = "concurrency-test"
+
+    def _fire(i):
+        return client.get("/calculate", params={"op": "add", "a": i, "b": 1}, headers={"X-Run-Id": run_id})
+
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        results = list(pool.map(_fire, range(n)))
+    assert all(r.status_code == 200 for r in results)
+
+    # _records() itself raises on any line that fails json.loads, so reaching
+    # this assert already proves every written line parsed cleanly.
+    recs = [r for r in _records() if r.get("run_id") == run_id]
+    assert len(recs) == n, f"expected {n} well-formed log lines, found {len(recs)}"
 
 
 def test_logging_failure_does_not_break_the_request(tmp_path, monkeypatch):

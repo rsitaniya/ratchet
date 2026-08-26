@@ -66,10 +66,12 @@ jobs:
       - name: Analyze usage signal
         run: python scripts/analyze_usage.py usage_log.jsonl
 
-      # The loop must also run for an API that ships no domain config at all.
-      - name: Simulate with no edge-case overlay (generic mode)
+      # The loop must also run for an API that ships no domain config at all —
+      # both edge_cases.json AND flywheel.toml absent, not just the former.
+      - name: Simulate with no config and no edge-case overlay (generic mode)
         run: |
           mv edge_cases.json /tmp/edge_cases.json
+          mv flywheel.toml /tmp/flywheel.toml
           python scripts/simulate.py http://localhost:8000 5
 
   madi-engagement:
@@ -151,13 +153,15 @@ jobs:
           PY
 
       # The loop must not be able to edit what scores it — including via a
-      # quoted/escaped path that fools a naive text parser but not `git apply`.
-      - name: Protected-path guard rejects plain and escaped evaluator edits
+      # quoted/escaped path that fools a naive text parser but not `git apply`,
+      # or a symlink into a protected dir that a follow-up patch writes through.
+      - name: Protected-path guard rejects plain, escaped, and symlink evaluator edits
         run: |
           set -e
           printf 'diff --git a/engagements/madi_onboarding/evaluate.py b/engagements/madi_onboarding/evaluate.py\n--- a/engagements/madi_onboarding/evaluate.py\n+++ b/engagements/madi_onboarding/evaluate.py\n@@ -1 +1 @@\n-x\n+y\n' > /tmp/plain.patch
           printf 'diff --git "a/engagements/madi_onboarding/\\145valuate.py" "b/engagements/madi_onboarding/\\145valuate.py"\n--- "a/engagements/madi_onboarding/\\145valuate.py"\n+++ "b/engagements/madi_onboarding/\\145valuate.py"\n@@ -0,0 +1 @@\n+x\n' > /tmp/escaped.patch
-          for p in /tmp/plain.patch /tmp/escaped.patch; do
+          printf 'diff --git a/shim b/shim\nnew file mode 120000\nindex 0000000..d488960\n--- /dev/null\n+++ b/shim\n@@ -0,0 +1 @@\n+engagements/madi_onboarding/fixtures\n' > /tmp/symlink.patch
+          for p in /tmp/plain.patch /tmp/escaped.patch /tmp/symlink.patch; do
             if python scripts/check_protected_paths.py "$p"; then
               echo "ERROR: $p was NOT rejected"; exit 1
             fi

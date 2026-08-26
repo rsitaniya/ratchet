@@ -13,7 +13,10 @@ containing special bytes (e.g. an octal-escaped `\\145valuate.py`), and a
 hand-crafted patch that quotes an all-ASCII path defeats a naive text parser
 while `git apply` still writes the real file. A hardened text parse runs too, but
 only as a backstop — the union of both is checked, and if Git cannot report the
-targets the patch is rejected (fail closed).
+targets the patch is rejected (fail closed). A patch that creates, deletes, or
+repoints a symlink (file mode 120000) is rejected outright before any path is
+even checked — a symlink can point anywhere on disk, so path-based globs alone
+cannot bound what a follow-up write through it can reach.
 
 Exit 0 = clean (apply is allowed). Exit 2 = a protected path was touched, the
 patch could not be parsed, or usage was wrong.
@@ -157,6 +160,29 @@ def changed_paths(diff_text: str) -> list[str]:
     return sorted(paths)
 
 
+_SYMLINK_MODE_PREFIXES = ("new file mode ", "old mode ", "new mode ", "deleted file mode ")
+
+
+def has_symlink_mode_change(diff_text: str) -> bool:
+    """True if the diff creates, deletes, or repoints a symlink (file mode 120000).
+
+    A symlink can point anywhere on disk, so a patch that creates one — then a
+    later patch that writes through it — can reach a path the protected-path
+    globs never see (verified: a symlink into fixtures/, then a write to
+    shim/gold_fused.jsonl through it, passes the glob check; only git's own
+    refusal to write beyond a symlink stops it). The implementer has no
+    legitimate reason to create or modify a symlink, so any 120000 mode is
+    rejected outright, independent of which path it's on.
+    """
+    for line in diff_text.splitlines():
+        line = line.rstrip()
+        if line.startswith(_SYMLINK_MODE_PREFIXES) and line.endswith("120000"):
+            return True
+        if line.startswith("index ") and line.endswith(" 120000"):
+            return True
+    return False
+
+
 def _matches(path: str, glob: str) -> bool:
     # Match the full path, the path with a leading "**/" stripped (so a
     # repo-root file matches too), and the basename — so `**/evaluate.py`
@@ -186,6 +212,10 @@ def main(argv: list[str] | None = None) -> int:
     if not globs:
         return 0  # app declares nothing protected
     patchfile = Path(argv[0])
+    if has_symlink_mode_change(patchfile.read_text(errors="replace")):
+        print("REJECTED: patch creates, deletes, or repoints a symlink (file mode 120000).", file=sys.stderr)
+        print("  A symlink can point anywhere on disk, bypassing path-based protection.", file=sys.stderr)
+        return 2
     try:
         paths = all_touched_paths(patchfile)
     except PatchParseError as e:

@@ -41,3 +41,15 @@ def test_distinct_records_not_double_counted():
     rep = AI.summarize(_rows(), run_id="r1", source="forbes")
     sales = next(g for g in rep["gaps"] if g["field"] == "sales")
     assert sales["affected_records"] == 3
+
+
+def test_two_records_sharing_a_record_id_hash_undercount_affected_records():
+    # gap_records is a set keyed on record_id_hash (analyze_integration.py), so
+    # two DISTINCT source records that happen to carry the same record_id (a
+    # real partner-data possibility, not just a hash collision) collapse into
+    # one affected_record — locking in current behavior, not asserting it's
+    # ideal. See CLAUDE.md rule 15 and test_madi_ingest_app.py's ingest-side
+    # counterpart: /ingest itself has no dedup and processes each independently.
+    rows = [_gap("sales", "h1"), _gap("sales", "h1")]  # two distinct events, same hash
+    rep = AI.summarize(rows, run_id="r1", source="forbes")
+    assert rep["gaps"][0]["affected_records"] == 1

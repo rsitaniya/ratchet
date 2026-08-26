@@ -61,6 +61,19 @@ def test_telemetry_is_structured_and_privacy_preserving(client):
     assert all("field" in e and "error_code" in e for e in integ)
 
 
+def test_duplicate_record_id_is_processed_independently_each_time(client):
+    # No idempotency/dedup check on /ingest — two requests carrying the same
+    # record_id are each scored on their own merits, not rejected or collapsed.
+    # This is current behavior, not a crash risk; analyze_integration.py's
+    # gap-ranking dedup (a set keyed on record_id_hash) is the layer where a
+    # repeated id actually changes a number — see test_madi_analyze.py.
+    rec = _rows("dbpedia.jsonl")[0]
+    r1 = client.post("/ingest", json={"source_system": "dbpedia", "record": rec}, headers={"X-Run-Id": "dup1"})
+    r2 = client.post("/ingest", json={"source_system": "dbpedia", "record": rec}, headers={"X-Run-Id": "dup2"})
+    assert r1.status_code == 200 and r2.status_code == 200
+    assert r1.json() == r2.json()
+
+
 def test_health_not_logged(client):
     client.get("/health")
     assert [e for e in _events(client) if e.get("path") == "/health"] == []

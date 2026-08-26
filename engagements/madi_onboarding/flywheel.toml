@@ -23,8 +23,10 @@ analyzer = "python engagements/madi_onboarding/analyze_integration.py --source f
 paths = [
     "**/evaluate.py",
     "**/adapters.py", "**/matching.py", "**/fusion.py",   # the engines the evaluator runs
+    "**/similarity.py",                                    # matching.py's own scoring functions — same reason
     "**/fixtures/**",                                       # sources + gold (records, pairs, fused)
     "**/gold_*.json", "**/*_gold.json",
+    "**/gold_*.jsonl", "**/*_gold.jsonl",                  # this repo's actual gold files are .jsonl
     "**/flywheel.toml",                                    # this file: declares the evaluator and this very list
     "scripts/**",                                          # the loop's own machinery (guard, config loader, simulator)
     ".claude/**",                                          # the orchestrator skills and agent definitions

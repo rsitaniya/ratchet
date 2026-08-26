@@ -66,6 +66,18 @@ def test_load_replay_specs_parses_and_skips_blanks(tmp_path):
     assert [s["path"] for s in specs] == ["/requests/mortgage", "/requests/unknown"]
 
 
+def test_load_replay_specs_diagnoses_malformed_line_instead_of_raw_jsondecodeerror(tmp_path):
+    # A truncated write or hand-edited line is a real failure mode for a replay
+    # file, not an edge case — see CLAUDE.md rule 15.
+    f = tmp_path / "replay.jsonl"
+    f.write_text(
+        json.dumps({"method": "POST", "path": "/requests/mortgage", "body": {}}) + "\n"
+        '{"method": "GET", "path": "/requests/unk\n'  # truncated mid-line
+    )
+    with pytest.raises(RuntimeError, match=r"replay\.jsonl:2.*not valid JSON"):
+        simulate.load_replay_specs(str(f))
+
+
 def test_fetch_schema_diagnoses_html_200_instead_of_raw_jsondecodeerror(monkeypatch):
     # A proxy/captive portal/auth wall returning 200 with an HTML error page is a
     # real upstream failure mode, not an edge case — see CLAUDE.md rule 14.

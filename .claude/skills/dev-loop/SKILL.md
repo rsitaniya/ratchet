@@ -316,7 +316,7 @@ to stop.
 - **Subagent patches use standard unified diff format.** Validate with `git apply --check` before applying.
 - **Two human gates block the loop: STEP 3 (approve the proposal) and STEP 6 (approve the exact tested tree).** All other steps chain automatically.
 - **Every applied patch — code, docs, anything — passes `check_protected_paths.py` before `git apply`.** No patch is exempt. The evaluator and Gate 2 run only after all edits are applied, so they judge the final tree.
-- **The implementer may never touch protected paths** (held-out evaluators, gold, fixtures, scoring). The orchestrator rejects such patches before applying (STEP 4.1). This is enforcement, not etiquette — it is what keeps the loop's own metrics honest.
+- **The implementer may never touch protected paths** (held-out evaluators, gold, fixtures, scoring). The orchestrator rejects such patches before applying (STEP 4.1). This is enforcement, not etiquette, for the implementer specifically: it holds no Bash, so its diff is its only mutation path, and every diff passes the guard. The orchestrator's own direct edits (STEP 4.3-4.5: CHANGELOG, version files, `edge_cases.json`) skip the diff-based guard — those three files are never protected-path candidates in any shipped config, so there is nothing for that skip to reach, but it means "every write is guarded" is a claim about the implementer's contract, not a kernel-level boundary on the orchestrator itself.
 - **Continuous mode uses Claude Code's built-in `/loop` runner.** Use `/loop /dev-loop`; stop with Ctrl+C.
 - **Do not skip the test step.** A feature is not shipped until `pytest tests/ -v` passes.
 - **Do not truncate the usage log** — historical entries are the signal for future cycles.

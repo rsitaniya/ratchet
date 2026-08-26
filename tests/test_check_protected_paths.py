@@ -87,6 +87,15 @@ def test_engagement_config_protects_loop_machinery():
     assert C.protected_hits(["scripts/check_protected_paths.py"], globs)  # the guard
     assert C.protected_hits([".claude/skills/dev-loop/SKILL.md"], globs)  # the orchestrator
     assert C.protected_hits([EVALUATOR], globs)
+    # matching.py is protected specifically because it runs similarity.py's
+    # scoring functions — the dependency must be protected too, or rigging
+    # e.g. jaro_winkler() inflates entity-matching F1 with no gold access at all.
+    assert C.protected_hits([f"{BASE}/similarity.py"], globs)
+    # This repo's actual gold files are .jsonl, not .json — the gold-specific
+    # globs must catch the real extension on their own, independent of the
+    # fixtures/** directory glob (a path outside fixtures/, e.g. reached
+    # through a symlink, must still be caught by the gold-name glob itself).
+    assert C.protected_hits(["gold_pairs.jsonl"], globs)
     # ...but the loop can still grow adapter data and normalizers.
     assert C.protected_hits([ADAPTER], globs) == []
     assert C.protected_hits([f"{BASE}/normalizers.py"], globs) == []
@@ -152,6 +161,61 @@ def test_union_catches_rename_of_evaluator(tmp_path, monkeypatch):
     monkeypatch.chdir(repo)
     assert "evaluate.py" in C.all_touched_paths(patch)
     assert C.protected_hits(sorted(C.all_touched_paths(patch)), ENGAGEMENT_GLOBS)
+
+
+def test_symlink_creation_is_detected():
+    # Real `git diff` output for `ln -s fixtures shim; git add shim`.
+    diff = (
+        "diff --git a/shim b/shim\n"
+        "new file mode 120000\n"
+        "index 0000000..d488960\n"
+        "--- /dev/null\n"
+        "+++ b/shim\n"
+        "@@ -0,0 +1 @@\n"
+        "+fixtures\n"
+        "\\ No newline at end of file\n"
+    )
+    assert C.has_symlink_mode_change(diff)
+
+
+def test_symlink_repoint_is_detected():
+    # Real `git diff` output for repointing an *existing* symlink — mode is
+    # unchanged (still 120000), so it only shows up on the index line.
+    diff = (
+        "diff --git a/shim b/shim\n"
+        "index 2e65efe..d488960 120000\n"
+        "--- a/shim\n"
+        "+++ b/shim\n"
+        "@@ -1 +1 @@\n"
+        "-a\n"
+        "\\ No newline at end of file\n"
+        "+fixtures\n"
+        "\\ No newline at end of file\n"
+    )
+    assert C.has_symlink_mode_change(diff)
+
+
+def test_ordinary_file_edit_is_not_flagged_as_symlink():
+    assert not C.has_symlink_mode_change(_diff(ADAPTER))
+    assert not C.has_symlink_mode_change(_delete_diff(GOLD))
+
+
+def test_symlink_bypass_end_to_end_via_main(tmp_path, monkeypatch):
+    # The review's exploit: a symlink into a protected directory, then a write
+    # through it to a path no glob matches, previously passed with exit 0.
+    monkeypatch.setattr(C, "get_value", lambda key: ENGAGEMENT_GLOBS if key == "protected.paths" else None)
+    patch = tmp_path / "symlink.patch"
+    patch.write_text(
+        "diff --git a/shim b/shim\n"
+        "new file mode 120000\n"
+        "index 0000000..d488960\n"
+        "--- /dev/null\n"
+        "+++ b/shim\n"
+        "@@ -0,0 +1 @@\n"
+        f"+{BASE}/fixtures\n"
+        "\\ No newline at end of file\n"
+    )
+    assert C.main([str(patch)]) == 2
 
 
 def test_git_unquote_matches_real_git(tmp_path):
