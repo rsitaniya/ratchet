@@ -1,0 +1,34 @@
+{
+  "per_source": {
+    "dbpedia": {
+      "source": "dbpedia",
+      "records": 6,
+      "schema_f1": 1.0,
+      "value_accuracy": 1.0,
+      "integrated_rate": 1.0,
+      "fully_correct_rate": 1.0
+    },
+    "forbes": {
+      "source": "forbes",
+      "records": 6,
+      "schema_f1": 1.0,
+      "value_accuracy": 1.0,
+      "integrated_rate": 1.0,
+      "fully_correct_rate": 1.0
+    }
+  },
+  "reconcile": {
+    "entity_matching": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "predicted": 0,
+      "gold": 5
+    },
+    "fusion": {
+      "accuracy": 0.875
+    }
+  },
+  "regressions": [],
+  "regression": false
+}

@@ -26,6 +26,12 @@ robustness fixes below are in place so the services behave sanely under bad inpu
 - **Planners are read-only by tool grant.** `feature-suggester` and `implementer` run
   with Read/Grep/Glob only (no Bash), so their sole mutation path is the unified diff
   the orchestrator validates and applies.
+- **Gold and fixtures are unreadable, not just unwritable.** `.claude/settings.json`
+  denies `Read`/`Grep` on `**/fixtures/**` and `**/gold_*.json` project-wide. Tool
+  grants already made planners write-blind; this makes them read-blind on the answer
+  key too, so "held-out" is enforced by the permission system, not by an instruction
+  the agent could ignore. A planner has no Bash, so it has no other path to file
+  contents.
 - **Two human gates.** Gate 1 approves the proposal; Gate 2 approves the exact tested
   patch after all edits and the held-out evaluator have run.
 - **A dirty working tree aborts the cycle**, so a Gate-2 revert only ever discards the
@@ -46,12 +52,14 @@ robustness fixes below are in place so the services behave sanely under bad inpu
 
 ## Residual limitations (out of scope; know these before exposing anything)
 
-- **Gold is readable by the agent.** The guard blocks *writing* the evaluator and gold,
-  and tool grants block writing anything except via the reviewed diff — but a
-  Read-capable agent can still read gold. Overfitting (a mapping that reproduces gold
-  values instead of deriving them) is caught by Gate-2 review and the
-  declarative-adapter constraint, not by a filesystem boundary. The real MaDI data is
-  downloaded, not committed, so the true benchmark's gold is not in the tree at all.
+- **The deny rule is a Claude Code permission, not a filesystem permission.** It
+  blocks the `Read`/`Grep` tool calls a planner subagent makes; it does not chmod the
+  files. A human editing the repo outside Claude Code, or a future tool grant that
+  adds Bash to a planner, is outside this control. Overfitting a *writable* normalizer
+  or adapter to the visible source records (without ever seeing gold) is still
+  possible in principle — Gate-2 human review and the fact that the evaluator returns
+  only aggregate scores (never per-field diagnostics) are what keep that from being a
+  practical attack, not a filesystem boundary.
 - **Telemetry provenance is caller-set.** `X-Usage-Source` / `X-Run-Id` are trusted so
   the local simulator can tag its own traffic. In an exposed deployment, assign
   provenance server-side and authenticate simulator traffic instead.

@@ -138,6 +138,10 @@ Real numbers from `evaluate.py`, onboarding a new source across two approved cyc
 | fully-correct rate | 0% | 0% | 100% |
 | regression on the onboarded source | — | none | none |
 
+Every cell above is a committed [run receipt](engagements/madi_onboarding/runs/) —
+the adapter at that cycle, the gap report that drove it, and the evaluator's raw
+JSON output — not an assertion made alongside the table.
+
 Then it reconciles records *across* sources: **entity matching** (F1 0 → 1.00 as
 the loop grows fuzzy-match rules) and **data fusion** (accuracy 0.875 → 1.00 as it
 learns per-attribute conflict resolution) — again scored against gold, with the

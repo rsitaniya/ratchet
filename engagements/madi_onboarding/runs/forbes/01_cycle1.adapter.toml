@@ -1,0 +1,20 @@
+# The source being onboarded. It starts with NO field mappings, so every record
+# fails (every field UNMAPPED, every required target attribute MISSING). Those
+# failures are the signal the loop turns into adapter entries, cycle by cycle.
+#
+# Cycle 1 (this state): the three REQUIRED target attributes, ranked top of
+# analyze_integration.py's gap report after replaying the raw source records —
+# see engagements/madi_onboarding/runs/forbes/ for the receipts.
+source = "forbes"
+
+[fields.name]
+target = "name"
+normalizer = "identity"
+
+[fields.yearFounded]
+target = "founded"
+normalizer = "to_int_year"
+
+[fields.country]
+target = "country"
+normalizer = "country_to_iso"

@@ -1,0 +1,9 @@
+── Integration status by source ────────────────────────
+  forbes         6/6 integrated (100.0%)
+
+── Top integration gaps (rank by affected records) ─────
+     6 records  UNMAPPED_FIELD         forbes.city
+     6 records  UNMAPPED_FIELD         forbes.industry
+     6 records  UNMAPPED_FIELD         forbes.assets
+     6 records  UNMAPPED_FIELD         forbes.sales
+     6 records  UNMAPPED_FIELD         forbes.ceo

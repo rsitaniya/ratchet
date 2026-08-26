@@ -43,10 +43,16 @@ real, licensed MaDI data (see [DATA_LICENSE_NOTICE.md](DATA_LICENSE_NOTICE.md)).
 | `forbes` metric        | Baseline | Cycle 1 | Cycle 2 |
 |------------------------|---------:|--------:|--------:|
 | schema-mapping F1      |     0.00 |    0.55 |    1.00 |
-| value recall (vs gold) |     0.00 |       — |    1.00 |
+| value recall (vs gold) |     0.00 |   0.375 |    1.00 |
 | integrated rate        |       0% |    100% |    100% |
 | fully-correct rate     |       0% |      0% |    100% |
 | `dbpedia` regression   |        — |    none |    none |
+
+Every cell is a committed receipt, not a claim: the adapter at each cycle, the
+gap report that motivated it, and the evaluator's JSON output (produced with
+`--baseline` pointed at the prior cycle, so `"regression": false` in the file is
+the same check that literally gates `/dev-loop` — see
+[runs/README.md](runs/README.md)).
 
 - **Cycle 1** mapped the three required fields (`name`, `yearFounded→founded`,
   `country`). Integration jumped 0% → 100% (every record now produces the

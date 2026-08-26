@@ -31,6 +31,23 @@ Everything domain-specific comes from the active `flywheel.toml` (selected by
 usage-log path from it rather than hardcoding — that is what lets this one loop
 drive any app.
 
+**Snapshot the evaluator baseline now, while the tree is still the pre-cycle
+state** (the precondition above just proved it's clean). This is what makes the
+Gate-2 regression check in STEP 6 possible — without a baseline captured *before*
+the patch lands, there is nothing to compare against:
+
+```bash
+EVALUATOR=$(python scripts/flywheel_config.py --get app.evaluator)
+rm -f .dev_loop_baseline.json
+if [ -n "$EVALUATOR" ]; then
+  eval "$EVALUATOR" > .dev_loop_baseline.json   # eval, not bare $EVALUATOR — zsh does not word-split unquoted vars
+fi
+```
+
+Empty for apps without one (e.g. the calculator) — the file is simply absent and
+STEP 6 skips the comparison. `.dev_loop_baseline.json` is gitignored scratch state,
+not a repo artifact.
+
 Ensure the API server is running:
 
 ```bash
@@ -196,7 +213,25 @@ to build (Gate 1) does not authorize whatever the implementer produced. An agent
 can make tests pass by weakening them; a held-out evaluator plus a human reading
 the actual diff are what catch that.
 
-1. **Run the app's evaluator, if it declares one.** Read `python scripts/flywheel_config.py --get app.evaluator` (a command; empty for apps without one, e.g. the calculator — then skip to step 2). Run it and capture the machine-readable result. If the app declares a pre-cycle baseline, compare: the primary metric must improve and no previously-passing metric may regress. A regression is treated like a test failure — do not proceed; revert (below) or fix.
+1. **Run the app's evaluator, if it declares one, against the pre-cycle baseline STEP 1 captured.**
+   ```bash
+   EVALUATOR=$(python scripts/flywheel_config.py --get app.evaluator)
+   if [ -n "$EVALUATOR" ]; then
+     if [ -s .dev_loop_baseline.json ]; then
+       eval "$EVALUATOR --baseline .dev_loop_baseline.json"
+     else
+       eval "$EVALUATOR"   # no baseline on record (e.g. first-ever cycle) — score only
+     fi
+   fi
+   ```
+   Empty `app.evaluator` → no evaluator declared (e.g. the calculator) — skip to step 2.
+   Capture the machine-readable result. **If it reports `"regression": true`, this is a
+   hard failure — treat it exactly like a failing test, not something to note and
+   proceed past.** Do not show it to the human as a pass. Go straight to Revert
+   (below), or fix the patch and re-run STEP 5 onward. A regression means the loop
+   improved the new source by silently breaking one that already worked — for an
+   onboarding system that is the worst failure mode there is, so it blocks the gate
+   the same way a failing test does.
 2. **Show the human the exact change.** Present the diff hash (`git diff | git hash-object --stdin`), the changed-file list, the diff (or a tight summary if large), and the evaluator result. Use AskUserQuestion: "Keep this patch? (Gate 2)" with options Keep / Revert.
 3. **On Revert:** restore the pre-cycle tree, report why, and end the cycle cleanly. Because STEP 1 refused to start on a dirty tree, everything uncommitted belongs to this cycle, so `git checkout -- .` followed by `git clean -fd` is safe — gitignored runtime files (e.g. the usage log) are preserved. **On Keep:** proceed.
 

@@ -1,0 +1,40 @@
+--- engagements/madi_onboarding/runs/forbes/01_cycle1.adapter.toml	2026-08-26 20:17:06
++++ engagements/madi_onboarding/runs/forbes/02_cycle2.adapter.toml	2026-08-26 20:17:27
+@@ -2,9 +2,10 @@
+ # fails (every field UNMAPPED, every required target attribute MISSING). Those
+ # failures are the signal the loop turns into adapter entries, cycle by cycle.
+ #
+-# Cycle 1 (this state): the three REQUIRED target attributes, ranked top of
+-# analyze_integration.py's gap report after replaying the raw source records —
+-# see engagements/madi_onboarding/runs/forbes/ for the receipts.
++# Cycle 2 (this state): the required fields from cycle 1, plus the remaining
++# optional attributes ranked by analyze_integration.py after cycle 1 shipped —
++# including the semantic rename sales -> revenue and the two currency/ISO
++# normalizations. See engagements/madi_onboarding/runs/forbes/ for the receipts.
+ source = "forbes"
+ 
+ [fields.name]
+@@ -18,3 +19,23 @@
+ [fields.country]
+ target = "country"
+ normalizer = "country_to_iso"
++
++[fields.city]
++target = "city"
++normalizer = "identity"
++
++[fields.industry]
++target = "industry"
++normalizer = "identity"
++
++[fields.assets]
++target = "assets"
++normalizer = "currency_to_usd"
++
++[fields.sales]
++target = "revenue"
++normalizer = "currency_to_usd"
++
++[fields.ceo]
++target = "keypeople"
++normalizer = "to_list"

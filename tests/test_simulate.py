@@ -8,7 +8,23 @@ dev-loop skill and CI depend on (`simulate.py BASE_URL N`).
 """
 import json
 
+import pytest
 import simulate
+
+
+class _FakeResponse:
+    """Minimal stand-in for an httpx.Response, for testing fetch_schema without a server."""
+
+    def __init__(self, status_code, content_type, text):
+        self.status_code = status_code
+        self.headers = {"content-type": content_type}
+        self.text = text
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return json.loads(self.text)
 
 
 def test_positional_args_still_parse():
@@ -50,9 +66,35 @@ def test_load_replay_specs_parses_and_skips_blanks(tmp_path):
     assert [s["path"] for s in specs] == ["/requests/mortgage", "/requests/unknown"]
 
 
-def test_safe_url_allows_same_origin_and_blocks_escape():
-    import pytest
+def test_fetch_schema_diagnoses_html_200_instead_of_raw_jsondecodeerror(monkeypatch):
+    # A proxy/captive portal/auth wall returning 200 with an HTML error page is a
+    # real upstream failure mode, not an edge case — see CLAUDE.md rule 14.
+    monkeypatch.setattr(
+        simulate.httpx, "get",
+        lambda *a, **k: _FakeResponse(200, "text/html", "<html>captive portal</html>"),
+    )
+    with pytest.raises(RuntimeError, match="not JSON"):
+        simulate.fetch_schema("http://localhost:8000")
 
+
+def test_fetch_schema_diagnoses_malformed_json_claiming_json_content_type(monkeypatch):
+    monkeypatch.setattr(
+        simulate.httpx, "get",
+        lambda *a, **k: _FakeResponse(200, "application/json", "{not valid"),
+    )
+    with pytest.raises(RuntimeError, match="not valid JSON"):
+        simulate.fetch_schema("http://localhost:8000")
+
+
+def test_run_schema_fails_loud_when_upstream_returns_zero_operations(monkeypatch):
+    # Valid JSON that isn't an OpenAPI document (e.g. {"detail": "Not Found"})
+    # must not look like a clean, quiet, zero-signal run.
+    monkeypatch.setattr(simulate, "fetch_schema", lambda base_url: {"paths": {}})
+    with pytest.raises(RuntimeError, match="No operations found"):
+        simulate.run_schema("http://localhost:8000", 5, "rt-1")
+
+
+def test_safe_url_allows_same_origin_and_blocks_escape():
     base = "http://localhost:8000"
     assert simulate.safe_url(base, "/calculate") == "http://localhost:8000/calculate"
     for evil in ("//attacker.invalid/collect", "http://attacker.invalid/x", "https://localhost:8000/x"):

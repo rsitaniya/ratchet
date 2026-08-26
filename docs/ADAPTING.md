@@ -116,7 +116,13 @@ The extra pieces, all generic to the loop:
 
 - **`[app].evaluator`** — a command the loop runs at Gate 2 to score a proposed
   patch against held-out truth (schema F1, value accuracy, regression), not just
-  HTTP status. Leave it empty and the loop behaves as before.
+  HTTP status. Leave it empty and the loop behaves as before. The orchestrator
+  snapshots the evaluator's output on the clean pre-cycle tree (STEP 1) and, on
+  every later cycle, re-invokes the evaluator with `--baseline <that snapshot>` at
+  Gate 2 — so a source that already worked and got worse is a hard gate failure,
+  not a silent one. Your evaluator only needs to accept that flag and, when
+  present, add a `"regression": true/false` key to its JSON output (see
+  `engagements/madi_onboarding/evaluate.py` for the reference implementation).
 - **`[protected].paths`** — globs the implementer patch may never touch (the
   evaluator, gold labels, fixtures, scoring). `scripts/check_protected_paths.py`
   rejects violating patches before `git apply`, so the loop can't pass by editing

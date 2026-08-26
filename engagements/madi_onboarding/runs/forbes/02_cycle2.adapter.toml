@@ -1,0 +1,41 @@
+# The source being onboarded. It starts with NO field mappings, so every record
+# fails (every field UNMAPPED, every required target attribute MISSING). Those
+# failures are the signal the loop turns into adapter entries, cycle by cycle.
+#
+# Cycle 2 (this state): the required fields from cycle 1, plus the remaining
+# optional attributes ranked by analyze_integration.py after cycle 1 shipped —
+# including the semantic rename sales -> revenue and the two currency/ISO
+# normalizations. See engagements/madi_onboarding/runs/forbes/ for the receipts.
+source = "forbes"
+
+[fields.name]
+target = "name"
+normalizer = "identity"
+
+[fields.yearFounded]
+target = "founded"
+normalizer = "to_int_year"
+
+[fields.country]
+target = "country"
+normalizer = "country_to_iso"
+
+[fields.city]
+target = "city"
+normalizer = "identity"
+
+[fields.industry]
+target = "industry"
+normalizer = "identity"
+
+[fields.assets]
+target = "assets"
+normalizer = "currency_to_usd"
+
+[fields.sales]
+target = "revenue"
+normalizer = "currency_to_usd"
+
+[fields.ceo]
+target = "keypeople"
+normalizer = "to_list"

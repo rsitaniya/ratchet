@@ -74,4 +74,11 @@ A green test suite proves the happy path, nothing more. Enforce these or the loo
 - **Boundaries are mechanism, not etiquette.** "Read-only" means the tool grant is Read/Grep/Glob (no Bash). "Held-out" gold means the agent cannot read it, not just cannot write it. Fail closed: if the guard cannot determine what a patch touches, reject it.
 - **Wire and run end-to-end before claiming it works.** Grep for every component the docs reference and confirm something selects it. Don't build an artifact and its harness in parallel and assume they connect.
 - **Prose never outruns code.** Re-verify factual claims (test counts, capability lists, gate counts) against reality on every doc change.
+- **Docs update in the same pass as the code, not after.** README, CASE_STUDY.md, SECURITY.md, ADAPTING.md, and this file describe behavior, gates, and numbers that live in code. A change to what they describe (a new gate, a wired check, a real vs. claimed metric) updates the doc in the same change — never a follow-up, never left stale.
 - **State the threat model.** This repo is a local, single-operator benchmark harness, not a hardened multi-tenant service. Say so where the claims live, so scope is explicit.
+
+## Precedence
+
+The user's global CLAUDE.md rules apply here by default. If one of them conflicts
+with this repo's own plan, this file, or its established execution conventions,
+do not resolve it silently — surface the conflict and let the user decide.

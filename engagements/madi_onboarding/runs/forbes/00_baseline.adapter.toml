@@ -1,0 +1,7 @@
+# The source being onboarded. It starts with NO field mappings, so every record
+# fails (every field UNMAPPED, every required target attribute MISSING). Those
+# failures are the signal the loop turns into adapter entries, cycle by cycle.
+# The loop fills this file in; the evaluator scores it against the gold mapping.
+source = "forbes"
+
+[fields]

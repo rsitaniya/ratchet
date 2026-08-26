@@ -89,9 +89,31 @@ def safe_url(base_url: str, path: str) -> str:
 
 
 def fetch_schema(base_url: str) -> dict:
-    r = httpx.get(safe_url(base_url, "/openapi.json"), timeout=10)
+    """Fetch and parse /openapi.json, diagnosing a 200 that isn't really JSON.
+
+    A proxy, captive portal, or auth wall can return HTTP 200 with an HTML error
+    page instead of the schema — a real-world case, not an edge case (a status
+    code alone does not prove the upstream is healthy). Raising a plain
+    `JSONDecodeError` here would bury that behind a traceback pointing into
+    httpx/json internals instead of naming the actual problem.
+    """
+    url = safe_url(base_url, "/openapi.json")
+    r = httpx.get(url, timeout=10)
     r.raise_for_status()
-    return r.json()
+    content_type = r.headers.get("content-type", "")
+    if "json" not in content_type.lower():
+        raise RuntimeError(
+            f"{url} returned {r.status_code} with Content-Type {content_type!r}, not JSON — "
+            f"looks like a proxy, captive portal, or auth wall serving an HTML page as a 200, "
+            f"not the OpenAPI schema. Body starts: {r.text[:200]!r}"
+        )
+    try:
+        return r.json()
+    except json.JSONDecodeError as e:
+        raise RuntimeError(
+            f"{url} returned {r.status_code} with Content-Type {content_type!r} but the body is "
+            f"not valid JSON ({e}). Body starts: {r.text[:200]!r}"
+        ) from e
 
 
 def resolve_ref(schema: dict, root: dict) -> dict:
