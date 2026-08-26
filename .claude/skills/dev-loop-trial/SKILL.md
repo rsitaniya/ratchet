@@ -122,7 +122,7 @@ from the same empty `adapters_real/forbes.toml`:
 
 ```bash
 git checkout -- .
-git clean -fd -- engagements/madi_onboarding/adapters_real engagements/madi_onboarding/CHANGELOG.md
+git clean -fd -- engagements/madi_onboarding/adapters_real tests/
 ```
 
 Count evaluator invocations for this trial from `$FLYWHEEL_EVAL_LOG` (one
