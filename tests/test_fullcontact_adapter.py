@@ -1,4 +1,4 @@
-"""Unit test for the fullcontact adapter's Attribute_2 -> name mapping."""
+"""Unit tests for the fullcontact adapter's Attribute_1 -> id / Attribute_2 -> name mappings."""
 from pathlib import Path
 
 from engagements.madi_onboarding import adapters as A
@@ -40,93 +40,39 @@ def test_fullcontact_attribute_1_maps_to_id():
     assert res["target"]["id"] == "fullcontact_1"
 
 
-def test_fullcontact_attribute_3_maps_to_country_via_country_to_iso():
+def test_fullcontact_identity_columns_are_no_longer_unmapped():
+    # Attribute_1/Attribute_2 were the UNMAPPED_FIELD signal this cycle acts on.
+    # The columns still out of scope must keep reporting it.
     schema = {"attributes": {}}
     adapter = A.load_adapter("fullcontact", ADAPTERS_REAL)
     rec = {
-        "Attribute_1": "fullcontact_1",
-        "Attribute_2": "BBMG",
-        "Attribute_3": "United States",
-        "Attribute_4": "Brooklyn",
-        "Attribute_5": "",
-        "Attribute_6": "",
+        "Attribute_1": "fullcontact_17",
+        "Attribute_2": "Renault",
+        "Attribute_3": "France",
+        "Attribute_4": "Boulogne Billancourt Cedex",
+        "Attribute_5": "['Fernand Renault', 'Louis Renault', 'Marcel Renault']",
+        "Attribute_6": "1932-01-01",
     }
     res = A.apply_adapter(rec, adapter, schema)
-    assert res["target"]["country"] == "US"
+    assert res["target"] == {"id": "fullcontact_17", "name": "Renault"}
+    unmapped = {f["field"] for f in res["failures"] if f["error_code"] == "UNMAPPED_FIELD"}
+    assert "Attribute_1" not in unmapped
+    assert "Attribute_2" not in unmapped
+    assert unmapped == {"Attribute_3", "Attribute_4", "Attribute_5", "Attribute_6"}
 
 
-def test_fullcontact_attribute_3_empty_country_is_invalid_value_format():
+def test_fullcontact_identity_columns_produce_values_on_a_sparse_record():
+    # fullcontact_10 has every other column empty; id and name still produce a
+    # value, which is the yield this mapping claims.
     schema = {"attributes": {}}
     adapter = A.load_adapter("fullcontact", ADAPTERS_REAL)
     rec = {
-        "Attribute_1": "fullcontact_2",
-        "Attribute_2": "Acme",
+        "Attribute_1": "fullcontact_10",
+        "Attribute_2": "Tabbs",
         "Attribute_3": "",
         "Attribute_4": "",
         "Attribute_5": "",
         "Attribute_6": "",
     }
     res = A.apply_adapter(rec, adapter, schema)
-    assert "country" not in res["target"]
-    assert {
-        "stage": "value_normalization",
-        "error_code": "INVALID_VALUE_FORMAT",
-        "field": "Attribute_3",
-    } in res["failures"]
-
-
-def test_fullcontact_attribute_4_maps_to_city_via_identity():
-    schema = {"attributes": {}}
-    adapter = A.load_adapter("fullcontact", ADAPTERS_REAL)
-    rec = {
-        "Attribute_1": "fullcontact_1",
-        "Attribute_2": "BBMG",
-        "Attribute_3": "United States",
-        "Attribute_4": "Brooklyn",
-        "Attribute_5": "",
-        "Attribute_6": "",
-    }
-    res = A.apply_adapter(rec, adapter, schema)
-    assert res["target"]["city"] == "Brooklyn"
-
-
-def test_fullcontact_attribute_6_bare_year_maps_to_founded_via_to_int_year():
-    # to_int_year does int(str(raw).strip()) -- it accepts a bare year string,
-    # not a full ISO date (see the next test for that case).
-    schema = {"attributes": {}}
-    adapter = A.load_adapter("fullcontact", ADAPTERS_REAL)
-    rec = {
-        "Attribute_1": "fullcontact_1",
-        "Attribute_2": "BBMG",
-        "Attribute_3": "United States",
-        "Attribute_4": "Brooklyn",
-        "Attribute_5": "",
-        "Attribute_6": "1908",
-    }
-    res = A.apply_adapter(rec, adapter, schema)
-    assert res["target"]["founded"] == 1908
-
-
-def test_fullcontact_attribute_6_full_iso_date_is_invalid_value_format():
-    # Real fullcontact rows store Attribute_6 as a full ISO date (e.g.
-    # "1908-01-01"). to_int_year can't parse that -- it raises ValueError, so
-    # the record correctly gets an INVALID_VALUE_FORMAT failure for founded
-    # rather than silently truncating to a year (there's no transform hook in
-    # the adapter format, and normalizers.py is out of scope this cycle).
-    schema = {"attributes": {}}
-    adapter = A.load_adapter("fullcontact", ADAPTERS_REAL)
-    rec = {
-        "Attribute_1": "fullcontact_1",
-        "Attribute_2": "BBMG",
-        "Attribute_3": "United States",
-        "Attribute_4": "Brooklyn",
-        "Attribute_5": "",
-        "Attribute_6": "1908-01-01",
-    }
-    res = A.apply_adapter(rec, adapter, schema)
-    assert "founded" not in res["target"]
-    assert {
-        "stage": "value_normalization",
-        "error_code": "INVALID_VALUE_FORMAT",
-        "field": "Attribute_6",
-    } in res["failures"]
+    assert res["target"] == {"id": "fullcontact_10", "name": "Tabbs"}
