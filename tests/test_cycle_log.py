@@ -232,3 +232,53 @@ def test_report_prints_the_headline_economics(cycle, capsys):
     out = capsys.readouterr().out
     assert "Delivery economics" in out
     assert "accepted at Gate 2" in out
+
+
+# --- field_yield in the delivery record ---
+
+def _eval(tmp_path, name, yields, schema_f1=0.5):
+    """An evaluator JSON with per-field yields, as evaluate.py emits it."""
+    p = tmp_path / name
+    p.write_text(json.dumps({"per_source": {"fc": {
+        "schema_f1": schema_f1,
+        "value_recall": None,
+        "field_yield": {
+            attr: {"source": f"Attribute_{i}", "produced": int(r * 100),
+                   "records": 100, "rate": r}
+            for i, (attr, r) in enumerate(yields.items())
+        },
+    }}}))
+    return p
+
+
+def test_field_yield_is_recorded_per_field_not_averaged(tmp_path):
+    before = _eval(tmp_path, "b.json", {"name": 1.0, "founded": 1.0})
+    after = _eval(tmp_path, "a.json", {"name": 1.0, "founded": 0.0})
+    d = metric_deltas(after, before)
+    # The field that broke is named. An aggregate would have averaged it away
+    # against the field that still works.
+    assert d["fc.field_yield.founded"] == {"before": 1.0, "after": 0.0, "delta": -1.0}
+    assert "fc.field_yield.name" not in d          # unchanged, so not "moved"
+
+
+def test_a_newly_mapped_field_records_null_before_not_zero(tmp_path):
+    """Unmapped and mapped-but-yielding-nothing are different facts.
+
+    Backfilling a missing baseline to 0.0 would claim the field used to be mapped
+    and delivered nothing, which is the same class of error as reporting an
+    unmeasured metric as 0.0.
+    """
+    before = _eval(tmp_path, "b.json", {"name": 1.0})
+    after = _eval(tmp_path, "a.json", {"name": 1.0, "founded": 0.0})
+    d = metric_deltas(after, before)
+    assert d["fc.field_yield.founded"] == {"before": None, "after": 0.0, "delta": None}
+
+
+def test_unmeasured_scalar_metrics_still_never_become_zero(tmp_path):
+    # value_recall is null on the real split and must stay out of the deltas
+    # entirely rather than arriving as a new metric with before=None.
+    before = _eval(tmp_path, "b.json", {"name": 1.0})
+    after = _eval(tmp_path, "a.json", {"name": 1.0}, schema_f1=0.9)
+    d = metric_deltas(after, before)
+    assert "fc.value_recall" not in d
+    assert d["fc.schema_f1"]["delta"] == 0.4

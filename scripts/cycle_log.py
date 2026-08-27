@@ -124,12 +124,20 @@ def _headline_metrics(evaluate: dict) -> dict[str, float]:
 
     Only numeric leaves are kept, so a `null` value_recall (unmeasured on the
     real split) never becomes a 0.0 delta.
+
+    `field_yield` is flattened one level deeper, to one entry per mapped
+    attribute, because the whole point of that metric is that it is attributable:
+    "fullcontact.field_yield.founded 0.0" names the field that delivered nothing,
+    where a single aggregate would average it away against the fields that worked.
     """
     out: dict[str, float] = {}
     for source, m in (evaluate.get("per_source") or {}).items():
         for key, val in m.items():
             if isinstance(val, int | float) and not isinstance(val, bool):
                 out[f"{source}.{key}"] = val
+        for attr, y in (m.get("field_yield") or {}).items():
+            if isinstance(y, dict) and isinstance(y.get("rate"), int | float):
+                out[f"{source}.field_yield.{attr}"] = y["rate"]
     rec = evaluate.get("reconcile") or {}
     if rec:
         out["reconcile.entity_matching_f1"] = rec.get("entity_matching", {}).get("f1")
@@ -148,10 +156,21 @@ def metric_deltas(evaluate_path: Path | None, baseline_path: Path | None) -> dic
             return {}
 
     after, before = load(evaluate_path), load(baseline_path)
+
+    def entry(k: str) -> dict:
+        b = before.get(k)
+        if isinstance(b, int | float):
+            return {"before": b, "after": after[k], "delta": round(after[k] - b, 4)}
+        # Absent from the baseline: this metric did not exist before this cycle,
+        # which for a field_yield key means the field was not mapped at all. That
+        # is not the same fact as "was mapped and yielded 0.0", so it is recorded
+        # as null rather than backfilled to zero, and carries no delta.
+        return {"before": None, "after": after[k], "delta": None}
+
     return {
-        k: {"before": before.get(k), "after": after[k], "delta": round(after[k] - before[k], 4)}
+        k: entry(k)
         for k in sorted(after)
-        if isinstance(before.get(k), int | float) and after[k] != before[k]
+        if not isinstance(before.get(k), int | float) or after[k] != before[k]
     }
 
 
@@ -255,6 +274,12 @@ def _eval_calls_per_accepted(kept: list[dict]) -> float | None:
     return round(sum(measured) / len(kept), 2)
 
 
+def _moved(name: str, m: dict) -> str:
+    """One metric's movement. A null `before` is new this cycle, not a rise from 0."""
+    before = "new" if m.get("before") is None else m["before"]
+    return f"{name} {before}→{m['after']}"
+
+
 def cmd_report(args) -> int:
     log = Path(args.log or get_value("app.cycle_log"))
     if not log.exists():
@@ -282,7 +307,7 @@ def cmd_report(args) -> int:
     print("── Per cycle ───────────────────────────────────────────")
     for r in records:
         tag = f"trial {r['trial']} " if r.get("trial") else ""
-        moved = ", ".join(f"{k} {m['before']}→{m['after']}" for k, m in (r.get("metrics") or {}).items())
+        moved = ", ".join(_moved(k, m) for k, m in (r.get("metrics") or {}).items())
         print(f"  {tag}cycle {r['cycle']:<3} {r['outcome']:<18} "
               f"{r['total_seconds']:>7.1f}s wall  {r['agent_seconds']:>6.1f}s agent  {moved}")
     return 0

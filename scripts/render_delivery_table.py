@@ -64,7 +64,8 @@ def render(records: list[dict]) -> str:
         out += ["", "| Cycle | Outcome | Wall time | Agent time | Metrics moved |", "|---|---|---|---|---|"]
         for r in records:
             moved = ", ".join(
-                f"`{k}` {m['before']} → {m['after']}" for k, m in (r.get("metrics") or {}).items()
+                f"`{k}` {'new' if m.get('before') is None else m['before']} → {m['after']}"
+                for k, m in (r.get("metrics") or {}).items()
             ) or "—"
             out.append(
                 f"| {r['cycle']} | {r['outcome']} | {r['total_seconds']:.1f}s "

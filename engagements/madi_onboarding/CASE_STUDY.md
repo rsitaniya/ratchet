@@ -129,6 +129,15 @@ Cycle 3 mapped `country`, `city`, and `founded`. `schema_f1` rose `0.50 → 0.91
 
 The property that makes yield the right primary signal is that **it needs no gold**. You do not have to know the correct mapping to know that a field you just declared produced a value in zero records, which means it works on the first day of an engagement, before any answer key exists. It also now drives regression detection, where it is the only signal that functions at all on the real splits: there `fully_correct_rate` is `None`, so the pre-existing check could never fire.
 
+Each cycle's delivery record now carries it per field, so the pairing is visible without anyone looking for it. Replaying cycle 3 through the current telemetry:
+
+```
+fullcontact.field_yield.founded   None → 0.0     delta=None
+fullcontact.schema_f1              0.8 → 0.9091  delta=0.1091
+```
+
+A `null` before is "this field was not mapped at all", not "it was mapped and yielded zero" — the same distinction `value_recall` keeps on the real split, for the same reason.
+
 Its limit is the exact mirror of `schema_f1`'s, and worth stating plainly: yield says a field produced a value, not that the value belongs there. A column mapped to the wrong target with a working normalizer yields `1.0`. The two metrics answer different halves of the question and neither replaces the other — which is the actual lesson, rather than "we fixed it."
 
 ## What this engagement demonstrates
