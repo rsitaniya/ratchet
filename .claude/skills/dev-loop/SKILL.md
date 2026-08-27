@@ -102,11 +102,19 @@ BASE_URL=$(uv run python scripts/flywheel_config.py --get app.base_url)
 curl -s "$BASE_URL/health" || echo "SERVER DOWN"
 ```
 
-If the server is down, start it (exporting the config's usage-log path so the
-server, simulator, and analyzer all agree on one file):
+If the server is down, start it. Export the config's usage-log path so the
+server, simulator, and analyzer all agree on one file, and — only when the
+active config sets them (real-split configs do; the synthetic default does
+not, and an empty-string export would override the app's own default) — its
+adapters dir and target schema, or the app silently serves the wrong split's
+adapters:
 
 ```bash
 export USAGE_LOG_PATH=$(uv run python scripts/flywheel_config.py --get app.usage_log)
+ADAPTERS_DIR_VAL=$(uv run python scripts/flywheel_config.py --get app.adapters_dir)
+[ -n "$ADAPTERS_DIR_VAL" ] && export ADAPTERS_DIR="$ADAPTERS_DIR_VAL"
+TARGET_SCHEMA_VAL=$(uv run python scripts/flywheel_config.py --get app.target_schema)
+[ -n "$TARGET_SCHEMA_VAL" ] && export TARGET_SCHEMA_PATH="$TARGET_SCHEMA_VAL"
 uv run uvicorn "$(uv run python scripts/flywheel_config.py --get app.module)" --reload &
 sleep 2
 ```
@@ -341,6 +349,10 @@ APP=$(uv run python scripts/flywheel_config.py --get app.module)
 pkill -f "uvicorn $APP" 2>/dev/null || true
 sleep 1
 export USAGE_LOG_PATH=$(uv run python scripts/flywheel_config.py --get app.usage_log)
+ADAPTERS_DIR_VAL=$(uv run python scripts/flywheel_config.py --get app.adapters_dir)
+[ -n "$ADAPTERS_DIR_VAL" ] && export ADAPTERS_DIR="$ADAPTERS_DIR_VAL"
+TARGET_SCHEMA_VAL=$(uv run python scripts/flywheel_config.py --get app.target_schema)
+[ -n "$TARGET_SCHEMA_VAL" ] && export TARGET_SCHEMA_PATH="$TARGET_SCHEMA_VAL"
 uv run uvicorn "$APP" --reload &
 sleep 2
 ```
