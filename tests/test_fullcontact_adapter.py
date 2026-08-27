@@ -68,7 +68,11 @@ def test_fullcontact_attribute_3_empty_country_is_invalid_value_format():
     }
     res = A.apply_adapter(rec, adapter, schema)
     assert "country" not in res["target"]
-    assert {"stage": "value_normalization", "error_code": "INVALID_VALUE_FORMAT", "field": "Attribute_3"} in res["failures"]
+    assert {
+        "stage": "value_normalization",
+        "error_code": "INVALID_VALUE_FORMAT",
+        "field": "Attribute_3",
+    } in res["failures"]
 
 
 def test_fullcontact_attribute_4_maps_to_city_via_identity():
@@ -121,4 +125,8 @@ def test_fullcontact_attribute_6_full_iso_date_is_invalid_value_format():
     }
     res = A.apply_adapter(rec, adapter, schema)
     assert "founded" not in res["target"]
-    assert {"stage": "value_normalization", "error_code": "INVALID_VALUE_FORMAT", "field": "Attribute_6"} in res["failures"]
+    assert {
+        "stage": "value_normalization",
+        "error_code": "INVALID_VALUE_FORMAT",
+        "field": "Attribute_6",
+    } in res["failures"]

@@ -103,7 +103,14 @@ For `cycle = 1..5`, or until convergence:
    `uv run python scripts/cycle_log.py mark analyze && uv run python scripts/cycle_log.py mark gate1`.
 3. **Implement** — invoke the `implementer` subagent exactly as `/dev-loop`
    STEP 4 does. It returns `EDITS` (structured `{file, old_string, new_string}`
-   edits, never a hand-written diff — see `implementer.md`), not a patch.
+   edits, never a hand-written diff — see `implementer.md`), plus `TEST_FILE`,
+   `VERIFICATION`, and `LIMITS`, not a patch.
+   **Apply `/dev-loop` STEP 4's `VERIFICATION` rule unchanged:** any traced field whose
+   result is an error, or a missing `VERIFICATION` on a change that maps data, is a
+   rejection and a resubmission — not a note. Auto-answered gates make this the only
+   remaining check on a dead mapping, so relaxing it here would let a trial record a
+   convergence the human loop would have refused, which makes the trial measure
+   nothing. Record such a rejection as a resubmission, exactly like a failed apply.
    Stamp the round-trip when it returns: `uv run python scripts/cycle_log.py mark implement`.
 4. **Apply** — `uv run python scripts/apply_edits.py <tempfile>`, the same
    single guarded entry point. Exit 2 (protected-path rejection) or exit 1
@@ -121,7 +128,9 @@ For `cycle = 1..5`, or until convergence:
    is another `mark implement`, and abandoning the cycle takes
    `--outcome guard-rejected` or `--outcome validation-failed`. Stamp a clean
    apply with `uv run python scripts/cycle_log.py mark apply`.
-5. **Test** — `uv run pytest tests/ -v`, then
+5. **Test** — `uv run pytest tests/ -v` and `uv run ruff check .` (same pair as
+   `/dev-loop` STEP 5 and as CI — a trial that ignores lint would measure
+   convergence the real loop would not accept), then
    `uv run python scripts/cycle_log.py mark test`. A failure here ends the cycle
    the same way a rejected/invalid submission does (`--outcome tests-failed`).
 6. **Evaluate** — `eval "$EVALUATOR --baseline .dev_loop_trial_baseline.json" | tee .dev_loop_trial_evaluate.json`,

@@ -210,7 +210,7 @@ Invoke the **implementer** subagent:
 
 ```
 Agent: implementer
-Input: "Implement: [chosen feature name and description]. Read <app source file from config> for context (its import path is <app.module from config>). Return EDITS and TEST_FILE."
+Input: "Implement: [chosen feature name and description]. Read <app source file from config> for context (its import path is <app.module from config>). Return EDITS, TEST_FILE, VERIFICATION, and LIMITS."
 ```
 
 The subagent returns structured output with exact delimiters:
@@ -218,14 +218,34 @@ The subagent returns structured output with exact delimiters:
 EDITS:
 ```json
 [
-  {"file": "path/to/file.py", "old_string": "exact existing text", "new_string": "its replacement"},
+  {"file": "path/to/file.toml", "old_string": "exact existing text", "new_string": "its replacement"},
   {"file": "tests/test_feature.py", "old_string": "", "new_string": "complete content of a new file"}
 ]
 ```
 
 TEST_FILE: tests/test_[name].py
 
+VERIFICATION:
+| target | source column | normalizer | real value tried | result |
+|---|---|---|---|---|
+
+LIMITS:
+- <what this change does not do>
 ````
+
+**Read `VERIFICATION` before you apply anything.** It is one row per field the change
+maps, tracing a real source value through the chosen normalizer. **Any row whose result
+is an error is a hard stop**: that field is declared but produces nothing, which is the
+exact shape of the one bad change this loop has landed — a mapping that raised the
+schema score while normalizing zero records. Reject the submission and ask for a
+resubmission that either extends the normalizer or drops the field to `LIMITS`. Do not
+"note it and proceed", and do not repair it yourself.
+
+An empty or missing `VERIFICATION` on a change that maps data is also a rejection. The
+whole point of the block is that a dead mapping cannot be submitted without writing down
+that it is dead.
+
+Keep `VERIFICATION` and `LIMITS` for STEP 6 — both are shown to the human at Gate 2.
 
 **Orchestrator applies ALL the writes (the orchestrator is the sole writer):**
 
@@ -271,10 +291,15 @@ uv run python scripts/cycle_log.py mark implement
 
 ```bash
 uv run pytest tests/ -v
+uv run ruff check .
 uv run python scripts/cycle_log.py mark test
 ```
 
-**Tests must pass before continuing.** If tests fail:
+**Both must pass before continuing.** `ruff` is here because CI runs it and this
+step is the loop's only chance to catch what CI would: a cycle once landed an
+agent-written test with two over-length lines, went green on pytest, passed both
+human gates, and turned CI red on push. A gate weaker than the CI it has to
+satisfy is not a gate. If tests fail:
 1. Read the error output carefully.
 2. Fix the issue directly via Edit (do not re-invoke the implementer subagent for small fixes).
 3. Re-run `uv run pytest` until all tests pass.
@@ -318,7 +343,53 @@ reading the actual diff are what catch that.
    `--outcome regression-blocked`, not `reverted` — a control firing and a human
    declining are different facts, and collapsing them would overstate the human's
    workload and understate the controls.
-2. **Show the human the exact change.** Present the diff hash (`git diff | git hash-object --stdin`), the changed-file list, the diff (or a tight summary if large), and the evaluator result. Use AskUserQuestion: "Keep this patch? (Gate 2)" with options Keep / Revert.
+2. **Show the human the exact change, and report the metrics honestly.**
+
+   Present, in this order:
+
+   a. The diff hash (`git diff | git hash-object --stdin`), the changed-file list, and
+      the diff (or a tight summary if large).
+
+   b. The implementer's `VERIFICATION` table verbatim, and its `LIMITS` block verbatim.
+      `LIMITS` is what the change does *not* do, in the implementer's own words. It is
+      the line most likely to change a reviewer's decision, so it is never summarised
+      away.
+
+   c. **Every metric the evaluator reported — including the ones that did not move.**
+      A flat metric beside a rising one is usually the most informative line on the
+      page. The rules below are not formatting preferences; each exists because its
+      absence produced a wrong decision at this gate before:
+
+      - **Lead with metrics that measure delivered values** — did records actually
+        produce usable output. Put metrics that score a *declared* correspondence
+        against an answer key after them, labelled as such. Cycle 3 on the
+        `fullcontact` split raised `schema_f1` from `0.50` to `0.91` while normalizing
+        zero real records for two of its three fields. `schema_f1` scores whether the
+        mapping was declared correctly, not whether any value survived it. Presenting
+        it as the cycle's headline is how that change got approved.
+      - **Never render an unmeasured metric as `0`.** A `null` is "not measured on this
+        split" and must be shown as those words, with the reason (e.g. the real
+        benchmark pins no value gold). `0.0` means measured and completely wrong. The
+        two must never look alike.
+      - **State the ceiling on any metric that structurally cannot move.** On
+        `fullcontact`, `integrated_rate` can never exceed `0.00` because the source has
+        no column for `industry`, `assets`, or `revenue` at all. Reported bare, three
+        cycles of `0.00 → 0.00` read as background noise, which is exactly how a real
+        signal got ignored. Reported as "0.00, ceiling 0.00 — source lacks 3 required
+        attributes", it reads as a known bound.
+      - **Do not surface a metric just because the evaluator emits one.** If a number
+        does not answer a question the reviewer is actually deciding, it competes for
+        attention with the ones that do. Say which question each number answers, and
+        drop the ones that answer none.
+
+   d. **Two or three plain sentences on what the result means**, including what it does
+      not establish. Not a restatement of the numbers — an interpretation a reviewer can
+      disagree with. "Three of four mapped fields now produce values on real records;
+      `founded` is declared but yields nothing because the source stores full ISO dates.
+      This does not show the mapped targets are the *right* targets — yield says a field
+      produces a value, not that the value belongs there."
+
+   Then use AskUserQuestion: "Keep this patch? (Gate 2)" with options Keep / Revert.
 3. **On Revert:** restore the pre-cycle tree, report why, and end the cycle cleanly. Because STEP 1 refused to start on a dirty tree, everything uncommitted belongs to this cycle, so `git checkout -- .` followed by `git clean -fd` is safe — gitignored runtime files (e.g. the usage log) are preserved. **On Keep:** proceed.
 4. **Close the cycle record**, immediately after the human answers, whichever way
    they answered:
@@ -462,5 +533,8 @@ to stop.
   exists to prevent. STEP 1 echoes the resolved config up front so this is
   never the operator's first signal that `$FLYWHEEL_CONFIG` was wrong.
 - **Continuous mode uses Claude Code's built-in `/loop` runner.** Use `/loop /dev-loop`; stop with Ctrl+C.
-- **Do not skip the test step.** A feature is not shipped until `uv run pytest tests/ -v` passes.
+- **Do not skip the test step.** A feature is not shipped until `uv run pytest tests/ -v`
+  **and** `uv run ruff check .` both pass. Lint is not cosmetic here: it is the
+  cheapest check that this cycle's landed code will survive CI, and the loop has
+  already shipped a lint-red cycle through both gates once.
 - **Do not truncate the usage log** — historical entries are the signal for future cycles.
