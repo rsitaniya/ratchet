@@ -25,6 +25,10 @@ A directory read is checked by walking it, not by matching the directory name.
 Otherwise `Grep(path="engagements/madi_onboarding")` would walk straight past a
 `**/fixtures/**` glob that never matches the parent — a guard with that hole is
 theatre, and this repo's own rule is that boundaries get validated adversarially.
+A call that names no path at all is judged as the working directory, because that
+is what the tool itself would search: `Grep(pattern=...)` with no `path` is an
+easier reach for gold than any parent directory, and treating "no path" as
+"nothing to judge" is the fail-open version of the same bug.
 
 Fails closed: if no config resolves, every read is denied rather than blessed.
 Same reasoning as check_protected_paths.py — "nobody configured protection" must
@@ -59,8 +63,17 @@ SKIP_DIRS = {".git", ".venv", "venv", "__pycache__", "node_modules", ".pytest_ca
 
 
 def requested_paths(tool_input: dict) -> list[str]:
-    """The paths a Read/Grep call is asking for, in the order the tool names them."""
-    return [str(tool_input[f]) for f in PATH_FIELDS if tool_input.get(f)]
+    """The paths a Read/Grep call is asking for, in the order the tool names them.
+
+    An unnamed target is the working directory, not nothing. `Grep(pattern=...)`
+    with no `path` is the tool's own default and searches the whole repo, so
+    returning [] here would fail OPEN on the cheapest possible reach for gold —
+    strictly easier than the `Grep(parent_dir)` case this guard was written to
+    close. Same rule as everywhere else in this repo: a target the guard cannot
+    name is denied, never blessed.
+    """
+    named = [str(tool_input[f]) for f in PATH_FIELDS if tool_input.get(f)]
+    return named or ["."]
 
 
 def _candidates(target: Path) -> list[Path]:
@@ -109,8 +122,6 @@ def main(stdin=None) -> int:
         return 2
 
     paths = requested_paths(tool_input)
-    if not paths:
-        return 0  # nothing path-shaped to judge
 
     try:
         cfg = config_path()

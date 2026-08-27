@@ -40,7 +40,7 @@ Adapt the `usage_logger` middleware in `engagements/madi_onboarding/app/main.py`
 | Domain correctness beyond HTTP | `[app].evaluator` | A known-wrong change lowers its score. |
 | Regression detection | Evaluator support for `--baseline FILE` | A known regression is rejected. |
 | Protected evaluator assets | `[protected].paths` | A returned structured edit targeting a protected path is rejected. |
-| Held-out material the agent must not read | `[protected].unreadable` | A `Read` of gold is denied, and so is a `Grep` of a parent directory containing it. |
+| Held-out material the agent must not read | `[protected].unreadable` | A `Read` of gold is denied, and so is a `Grep` of a parent directory containing it — or a `Grep` that names no path, which searches the same tree by default. |
 | Delivery cost | `[app].cycle_log` | One record per cycle; `cycle_log.py report` derives cost per accepted change. |
 | Separate evaluation distribution | A second config, fixtures, oracle, and write surface | The development adapter cannot silently overwrite the test surface. |
 

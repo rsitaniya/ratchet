@@ -6,6 +6,9 @@
     "in this repo. What stays session-wide is narrower and deliberate: nobody",
     "working in this repo — orchestrator or human — reads gold or fixtures, which",
     "is the property the committed receipts under runs/ were authored under.",
+    "The .jsonl variants are listed alongside the .json ones because",
+    "[protected].unreadable already covers both and gold records are JSONL —",
+    "a deny list that stops at .json is an asymmetry waiting to leak.",
     "runs/ itself is readable again: Gate 2 shows receipts and the trial skill",
     "writes a report it has to be able to read back."
   ],
@@ -14,9 +17,13 @@
       "Read(**/fixtures/**)",
       "Read(**/gold_*.json)",
       "Read(**/*_gold.json)",
+      "Read(**/gold_*.jsonl)",
+      "Read(**/*_gold.jsonl)",
       "Grep(**/fixtures/**)",
       "Grep(**/gold_*.json)",
       "Grep(**/*_gold.json)",
+      "Grep(**/gold_*.jsonl)",
+      "Grep(**/*_gold.jsonl)",
       "Bash(git apply:*)"
     ]
   }

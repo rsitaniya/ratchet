@@ -44,7 +44,9 @@ def run(tool_name, tool_input):
 def test_requested_paths_reads_every_tool_shape():
     assert requested_paths({"file_path": "a.py"}) == ["a.py"]
     assert requested_paths({"path": "src"}) == ["src"]
-    assert requested_paths({"pattern": "def foo"}) == []
+    # No named path is the tool's own default target, the working directory --
+    # not "nothing to judge". Returning [] here is what made the guard fail open.
+    assert requested_paths({"pattern": "def foo"}) == ["."]
 
 
 def test_reading_gold_directly_is_denied(repo):
@@ -124,9 +126,28 @@ def test_payload_without_tool_input_fails_closed(repo):
     assert main(io.StringIO(json.dumps({"tool_name": "Read", "tool_input": "oops"}))) == 2
 
 
-def test_payload_with_no_path_is_allowed(repo):
-    """A Grep with only a pattern names nothing to judge; the tool grant bounds it."""
-    assert run("Grep", {"pattern": "def foo"}) == 0
+def test_grep_with_no_path_at_all_is_denied(repo):
+    """The cheapest reach for gold, and the one a guard is most likely to miss.
+
+    `Grep(pattern=...)` with no `path` searches the whole working directory --
+    strictly easier than the parent-directory case above, and for a while this
+    guard allowed it because "no path" was read as "nothing to judge". An
+    unnamed target is judged as `.`, so it is denied for the same reason
+    `Grep(path=".")` is.
+    """
+    assert run("Grep", {"pattern": "forbes"}) == 2
+
+
+def test_grep_with_no_path_is_allowed_when_nothing_is_held_out(tmp_path, monkeypatch):
+    """The deny above must come from reachable gold, not from a blanket refusal
+    of every unnamed target -- otherwise the fix would break ordinary greps."""
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src/app.py").write_text("app = 1\n")
+    cfg = tmp_path / "flywheel.toml"
+    cfg.write_text('[app]\nmodule = "demo:app"\n\n[protected]\nunreadable = ["**/fixtures/**"]\n')
+    monkeypatch.setenv("FLYWHEEL_CONFIG", str(cfg))
+    monkeypatch.chdir(tmp_path)
+    assert run("Grep", {"pattern": "app"}) == 0
 
 
 def test_blocked_hits_reports_every_offending_file(repo):
