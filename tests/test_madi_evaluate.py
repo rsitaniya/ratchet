@@ -149,3 +149,115 @@ def test_evaluate_source_handles_records_with_no_record_id(tmp_path):
 def test_full_forbes_toml_is_valid():
     # Guard: the reference "converged" adapter used in tests must parse.
     assert tomllib.loads(FULL_FORBES)["source"] == "forbes"
+
+
+# --- field_yield: the gold-free signal that a declared mapping actually delivers ---
+
+
+def _split(tmp_path, source_rows: list[dict], adapter_toml: str, gold: dict) -> tuple[Path, Path]:
+    """A self-contained split: sources + schema + mapping gold, no value gold.
+
+    Built here rather than borrowed from fixtures/ so the raw values under test
+    are visible in the test itself — these cases turn on the exact value a
+    normalizer is handed.
+    """
+    fx = tmp_path / "fixtures"
+    (fx / "sources").mkdir(parents=True)
+    (fx / "target_schema.json").write_text(
+        json.dumps({"attributes": {"name": {"required": True}, "founded": {}}})
+    )
+    (fx / "gold_mapping.json").write_text(json.dumps({"fullcontact": gold}))
+    (fx / "sources" / "fullcontact.jsonl").write_text(
+        "".join(json.dumps(r) + "\n" for r in source_rows)
+    )
+    adir = tmp_path / "adapters"
+    adir.mkdir()
+    (adir / "fullcontact.toml").write_text(adapter_toml)
+    return fx, adir
+
+
+# The shape that shipped on the real fullcontact split: the correspondence
+# Attribute_6 -> founded is correct, so schema_f1 rewards it, but the source
+# stores full ISO dates and to_int_year parses only a bare year, so not one
+# record produces a value.
+DEAD_FOUNDED = """source = "fullcontact"
+[fields.Attribute_2]
+target = "name"
+normalizer = "identity"
+[fields.Attribute_6]
+target = "founded"
+normalizer = "to_int_year"
+"""
+
+ISO_DATE_ROWS = [
+    {"Attribute_2": "BBMG", "Attribute_6": "1908-01-01"},
+    {"Attribute_2": "Acme", "Attribute_6": "1955-06-30"},
+]
+
+
+def test_field_yield_exposes_a_mapping_that_schema_f1_calls_perfect(tmp_path):
+    fx, adir = _split(
+        tmp_path, ISO_DATE_ROWS, DEAD_FOUNDED,
+        gold={"Attribute_2": "name", "Attribute_6": "founded"},
+    )
+    r = E.evaluate_source("fullcontact", fx, adir)
+    # Both correspondences are exactly right, so the gold-based metric is perfect.
+    assert r["schema_f1"] == 1.0
+    # And one of them delivers nothing. This is the gap that let a broken cycle
+    # through Gate 2: schema_f1 scores the declaration, field_yield scores the result.
+    assert r["field_yield"]["founded"]["rate"] == 0.0
+    assert r["field_yield"]["founded"]["produced"] == 0
+    assert r["field_yield"]["founded"]["source"] == "Attribute_6"
+    assert r["field_yield"]["name"]["rate"] == 1.0
+    assert r["field_yield"]["name"]["produced"] == r["records"]
+
+
+def test_field_yield_is_partial_when_only_some_records_normalize(tmp_path):
+    # The real split's `country` case: mostly works, silently fails on empties.
+    rows = [
+        {"Attribute_2": "BBMG", "Attribute_6": "1908"},
+        {"Attribute_2": "Acme", "Attribute_6": ""},
+    ]
+    fx, adir = _split(tmp_path, rows, DEAD_FOUNDED, gold={"Attribute_6": "founded"})
+    r = E.evaluate_source("fullcontact", fx, adir)
+    assert r["field_yield"]["founded"] == {
+        "source": "Attribute_6", "produced": 1, "records": 2, "rate": 0.5
+    }
+
+
+def test_field_yield_covers_only_declared_mappings(tmp_path):
+    fx, adir = _split(tmp_path, ISO_DATE_ROWS, DEAD_FOUNDED, gold={"Attribute_2": "name"})
+    r = E.evaluate_source("fullcontact", fx, adir)
+    # An unmapped attribute has no yield to report: not claimed yet is a different
+    # fact from claimed-and-delivering-nothing, and must not read as 0.0.
+    assert set(r["field_yield"]) == {"name", "founded"}
+    assert "country" not in r["field_yield"]
+
+
+def test_field_yield_regression_fires_without_any_gold():
+    """The only regression signal that works on the real splits.
+
+    There `fully_correct_rate` is None, so the existing check can never fire and
+    a field that used to deliver and now delivers nothing would pass Gate 2
+    silently. Yield needs no answer key, so it still catches it.
+    """
+    def split(founded_rate):
+        return {"per_source": {"fullcontact": {
+            "fully_correct_rate": None,
+            "field_yield": {"founded": {"rate": founded_rate}, "name": {"rate": 1.0}},
+        }}}
+    assert E._detect_regressions(split(0.0), split(1.0)) == ["fullcontact.founded"]
+    assert E._detect_regressions(split(1.0), split(1.0)) == []
+    assert E._detect_regressions(split(1.0), split(0.0)) == []
+
+
+def test_field_yield_regression_ignores_a_newly_added_field():
+    # A field absent from the baseline is new work, not a regression.
+    baseline = {"per_source": {"fullcontact": {
+        "fully_correct_rate": None, "field_yield": {"name": {"rate": 1.0}},
+    }}}
+    current = {"per_source": {"fullcontact": {
+        "fully_correct_rate": None,
+        "field_yield": {"name": {"rate": 1.0}, "founded": {"rate": 0.0}},
+    }}}
+    assert E._detect_regressions(current, baseline) == []

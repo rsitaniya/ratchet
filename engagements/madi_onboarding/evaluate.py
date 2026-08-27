@@ -20,6 +20,21 @@ Metrics (none satisfiable by returning HTTP 200):
                          the adapters reproduce exactly (denominator is gold)
   - integrated_rate    : share of records with all required attributes produced
   - fully_correct_rate : share of records whose every gold attribute matches
+  - field_yield        : per mapped target attribute, the share of records that
+                         actually produced a value for it
+
+field_yield is the only metric here that needs no gold at all, which is why it
+exists. A mapping can declare a correct source->target correspondence, score a
+perfect schema_f1 against the answer key, and normalize zero records — that
+happened on the fullcontact split, where `Attribute_6 -> founded` was mapped with
+`to_int_year` while the source stores full ISO dates. schema_f1 measures whether
+the correspondence was declared correctly; field_yield measures whether anything
+came out the other side. Both are needed, and a reviewer shown only the first
+approved that change.
+
+Its limit is the mirror of schema_f1's: yield says a field produced a value, not
+that the value belongs there. A column mapped to the wrong target with a working
+normalizer yields 1.0.
 
 Usage:
     python engagements/madi_onboarding/evaluate.py [--baseline FILE] [--sources a,b]
@@ -78,6 +93,14 @@ def evaluate_source(source: str, fixtures_dir: Path, adapters_dir: Path) -> dict
     predicted = {sf: spec["target"] for sf, spec in adapter.get("fields", {}).items()}
     schema_f1 = _f1(predicted, gold_mapping)
 
+    # {target attribute: source columns mapped to it}. Yield is measured only over
+    # what this adapter actually declares — an unmapped attribute has no yield to
+    # report, it simply is not claimed yet.
+    mapped: dict[str, list[str]] = {}
+    for src_field, spec in adapter.get("fields", {}).items():
+        mapped.setdefault(spec["target"], []).append(src_field)
+    produced = dict.fromkeys(mapped, 0)
+
     n = len(records)
     integrated = 0
     fully_correct = 0
@@ -87,6 +110,9 @@ def evaluate_source(source: str, fixtures_dir: Path, adapters_dir: Path) -> dict
         res = A.apply_adapter(rec, adapter, target_schema)
         if res["integrated"]:
             integrated += 1
+        for attr in mapped:
+            if attr in res["target"]:
+                produced[attr] += 1
         # .get(), not indexing: real-source records (no gold_records.jsonl pinned)
         # carry no record_id at all — gold_records is always {} there, so the
         # lookup key is moot, but indexing would still raise.
@@ -110,6 +136,18 @@ def evaluate_source(source: str, fixtures_dir: Path, adapters_dir: Path) -> dict
         "value_recall": (round(correct_values / total_values, 4) if total_values else 0.0) if has_value_gold else None,
         "integrated_rate": round(integrated / n, 4) if n else 0.0,
         "fully_correct_rate": (round(fully_correct / n, 4) if n else 0.0) if has_value_gold else None,
+        # Denominator is every record, not just those carrying the source column:
+        # a mapping that delivers nothing because the column is usually absent has
+        # failed to deliver just as surely as one with a wrong normalizer.
+        "field_yield": {
+            attr: {
+                "source": ",".join(sorted(srcs)),
+                "produced": produced[attr],
+                "records": n,
+                "rate": round(produced[attr] / n, 4) if n else 0.0,
+            }
+            for attr, srcs in sorted(mapped.items())
+        },
     }
 
 
@@ -177,15 +215,24 @@ def _detect_regressions(current: dict, baseline: dict) -> list[str]:
     regressions = []
     for source, base in baseline.get("per_source", {}).items():
         cur = current.get("per_source", {}).get(source)
+        if not cur:
+            continue
         # None means "no value gold for this source" (real-data test split) — not
         # comparable to a float, and not itself a regression.
         if (
-            cur
-            and cur["fully_correct_rate"] is not None
+            cur["fully_correct_rate"] is not None
             and base["fully_correct_rate"] is not None
             and cur["fully_correct_rate"] < base["fully_correct_rate"]
         ):
             regressions.append(source)
+        # Yield needs no gold, so this is the only regression signal that works on
+        # the real splits at all — there, fully_correct_rate is None and the check
+        # above can never fire. A field that used to produce values and now does
+        # not is a regression whether or not an answer key exists.
+        for attr, base_y in (base.get("field_yield") or {}).items():
+            cur_y = (cur.get("field_yield") or {}).get(attr)
+            if cur_y and cur_y["rate"] < base_y["rate"]:
+                regressions.append(f"{source}.{attr}")
     b_rec, c_rec = baseline.get("reconcile"), current.get("reconcile")
     if b_rec and c_rec:
         if c_rec["entity_matching"]["f1"] < b_rec["entity_matching"]["f1"]:
