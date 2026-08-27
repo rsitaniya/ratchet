@@ -10,9 +10,9 @@ This is a local, single-operator development loop and benchmark harness. It is n
 
 | Claim | Mechanism |
 |---|---|
-| The implementer cannot write directly. | It holds `Read, Grep, Glob` only — no Bash, no Edit, no Write — and returns a unified diff. This is its only mutation path. |
-| Protected artifacts cannot be changed by an applied patch. | `scripts/check_protected_paths.py` fails closed on protected, malformed, renamed, copied, or symlink paths before `git apply` — and refuses to run at all (fail closed, not fail open) if no `flywheel.toml` resolves. |
-| The guard cannot be skipped by omission. | `scripts/apply_patch.py` is the single entry point that runs the protected-path guard, `git apply --check`, and `git apply`, in that fixed order. `.claude/settings.json` also denies `Bash(git apply:*)` directly, so there is no shorter path to landing a patch. |
+| The implementer cannot write directly. | It holds `Read, Grep, Glob` only — no Bash, no Edit, no Write — and returns structured `{file, old_string, new_string}` edits, never a diff. This is its only mutation path. |
+| Protected artifacts cannot be changed by a submitted edit. | `scripts/check_protected_paths.py` checks each edit's `file` path directly (no diff parsing — there is no diff) and fails closed if no `flywheel.toml` resolves. A rename, copy, or symlink write has no equivalent in the edit contract, so there is nothing to detect for any of them — the implementer cannot express those operations at all, not just none it has tried and been caught at. |
+| The guard cannot be skipped by omission. | `scripts/apply_edits.py` is the single entry point that runs the protected-path guard, then validates every edit's `old_string` against current file content, then writes — in that fixed order, atomically (one bad edit blocks the whole submission). `.claude/settings.json` also denies `Bash(git apply:*)` directly, so hand-crafting a diff isn't a shorter path either. |
 | Gold is not an implementer input. | Claude Code deny rules block the implementer's `Read`/`Grep` access to fixtures, gold files, and `runs/` (committed receipts — the converged answers to prior cycles). |
 | A tested patch needs an accountable decision. | Gate 1 approves scope; Gate 2 approves the exact tested patch after tests and evaluator output. |
 | A cycle cannot overwrite unrelated local work. | The orchestrator aborts on a dirty working tree. |

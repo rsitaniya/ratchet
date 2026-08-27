@@ -32,7 +32,7 @@ The artifact trail contains the baseline, ranked gaps, adapter patch, patch hash
 | Delivery concern | Mechanism in this repository |
 |---|---|
 | Turn observed failure into a scoped engineering decision | Endpoint telemetry and engagement-specific gap analysis rank failed intent and affected records. |
-| Work safely with agent-generated changes | The read-only implementer subagent returns a diff; the orchestrator validates protected paths and `git apply --check` (via `apply_patch.py`, the single guarded entry point) before it writes. |
+| Work safely with agent-generated changes | The read-only implementer subagent returns structured edits, never a diff; the orchestrator validates protected paths and every edit's exact match (via `apply_edits.py`, the single guarded entry point) before it writes. |
 | Measure more than request success | An optional, protected evaluator scores domain correctness and regression against held-out truth. |
 | Answer "did it overfit the score, not the problem?" | A real-data test split (MaDI-Bench's own CSVs and gold) is scored once, offline, never during a cycle — a distribution the fitted dev-fixture adapter cannot transfer to. |
 | Generalize a one-off solution | The simulator, analyzer contract, controls, and configuration seam are generic; adapters, rules, and each engagement's own analyzer are engagement data. Two configs (dev, real-data test) already select two different datasets and oracles against the same loop. |

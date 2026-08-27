@@ -155,14 +155,17 @@ Invoke the **implementer** subagent:
 
 ```
 Agent: implementer
-Input: "Implement: [chosen feature name and description]. Read <app source file from config> for context (its import path is <app.module from config>). Return PATCH, TEST_FILE, and CHANGELOG."
+Input: "Implement: [chosen feature name and description]. Read <app source file from config> for context (its import path is <app.module from config>). Return EDITS, TEST_FILE, and CHANGELOG."
 ```
 
 The subagent returns structured output with exact delimiters:
 ````
-PATCH:
-```diff
-[standard unified diff updating the app source module and adding the TestClient test file]
+EDITS:
+```json
+[
+  {"file": "path/to/file.py", "old_string": "exact existing text", "new_string": "its replacement"},
+  {"file": "tests/test_feature.py", "old_string": "", "new_string": "complete content of a new file"}
+]
 ```
 
 TEST_FILE: tests/test_[name].py
@@ -172,21 +175,24 @@ CHANGELOG: [one-line summary]
 
 **Orchestrator applies ALL the writes (the orchestrator is the sole writer):**
 
-1. **Code + test patch** — Extract the `PATCH:` diff into a temp file, then run:
+1. **Code + test edits** — Extract the `EDITS:` JSON into a temp file, then run:
    ```bash
-   uv run python scripts/apply_patch.py <tempfile>
+   uv run python scripts/apply_edits.py <tempfile>
    ```
-   This is the only path that applies a patch: it runs the protected-path guard,
-   `git apply --check`, and `git apply` in that fixed order, so there is no step
-   to skip and no way for a patch to reach the tree without passing the guard
-   first. **Exit 2 from the guard stage = the patch touches a protected path**
-   (held-out evaluator, gold labels, fixtures, `runs/`, scoring — read from
-   `[protected].paths` in the active config) — **REJECT the patch** and ask the
-   implementer to resubmit without touching protected files. A nonzero exit
-   from the `git apply --check`/`git apply` stage means the diff itself is bad —
-   inspect the failure and either repair it directly or ask the implementer for
-   a corrected unified diff.
-2. **Test path sanity** — Confirm `TEST_FILE:` exists after the patch and is under `tests/`.
+   This is the only path that applies edits: it runs the protected-path guard
+   (from the edit list's file paths — no diff parsing needed), then validates
+   every edit's `old_string` against the current file content before writing
+   anything, so there is no step to skip and no way for an edit to reach the
+   tree without passing the guard first. **Exit 2 = the edits touch a protected
+   path** (held-out evaluator, gold labels, fixtures, `runs/`, scoring — read
+   from `[protected].paths` in the active config) — **REJECT the submission**
+   and ask the implementer to resubmit without touching protected files.
+   **Exit 1 = an edit failed validation** (`old_string` not found, not unique,
+   or a create target that already exists) — show the implementer the exact
+   error and ask for a corrected `EDITS` list; do not hand-repair it yourself.
+   A submission is atomic: one bad edit means none of them land, so a retry
+   resubmits the whole list, not a patch to the failing entry.
+2. **Test path sanity** — Confirm `TEST_FILE:` exists after the edits are applied and is under `tests/`.
 3. **Changelog** — In `CHANGELOG.md`, insert (or append to) a `## [Unreleased]`
    entry under `### Added` with the `CHANGELOG:` line.
 4. **Version bump (only if `[app].version_files` is non-empty)** — Most cycles
@@ -320,37 +326,42 @@ to stop.
 ## IMPORTANT NOTES
 
 - **One subagent, `implementer`, and its restriction is mechanical, not procedural.**
-  It holds `Read, Grep, Glob` — no Bash, no Edit, no Write — so a returned diff
-  is its *only* possible mutation path, and Claude Code's own deny rules block
+  It holds `Read, Grep, Glob` — no Bash, no Edit, no Write — so returned edits
+  are its *only* possible mutation path, and Claude Code's own deny rules block
   it from reading fixtures, gold, or `runs/` at the tool level (not just by
   instruction). Feature proposal (STEP 2) does not warrant a second subagent:
   the orchestrator already holds the signal report and the app source that
   step needs, and a subagent there would only reformat what it already has —
   its output is a few sentences a human chooses between at Gate 1, which is not
   an isolation boundary worth a round-trip. Everything past the implementer's
-  diff is deterministic code (`apply_patch.py`, the evaluator, tests) or a
+  edits is deterministic code (`apply_edits.py`, the evaluator, tests) or a
   human at one of the two gates.
-- **Every patch — always, no exceptions — goes through `scripts/apply_patch.py`,
-  never `git apply` directly.** That script *is* the guard: it runs the
-  protected-path check, `git apply --check`, and `git apply`, in that order,
-  with no path that skips any of the three. `.claude/settings.json` also denies
-  `Bash(git apply:*)` directly, so `apply_patch.py` is the path of least
-  resistance, not just the documented one. This is a stronger claim than "every
-  write is guarded" used to be — there is no longer a category of orchestrator
-  edit (CHANGELOG, version bump) that bypasses it, because those edits use Edit,
-  not `git apply`, and were never diff-based to begin with. **What this is not:**
-  an OS-level boundary. The orchestrator holds Bash and could still reach `git
-  apply` through a shell construct the deny prefix doesn't match. What changed
-  is the failure mode — bypassing the guard now requires deliberate evasion,
-  not a forgotten step. See `SECURITY.md`.
+- **Every submission — always, no exceptions — goes through `scripts/apply_edits.py`,
+  never a hand-written diff.** That script *is* the guard: it runs the
+  protected-path check, then validates every edit's `old_string` against
+  current file content, then writes, with no path that skips any of the three.
+  The implementer never authors a unified diff — it returns exact-substring
+  edits (the same contract as this tool's own Edit/Write tools), which removes
+  the actual cause of every malformed-patch failure observed in trial runs: a
+  model hand-computing hunk headers and line counts from memory is mechanical
+  bookkeeping, exactly what this project avoids pushing onto a model. It also
+  narrows the guard itself — a rename, a copy, and a symlink write are all
+  diff-format operations with no equivalent in the edit contract, so there is
+  nothing left to detect for any of them; the implementer simply cannot express
+  those attacks in this format. `.claude/settings.json` also denies
+  `Bash(git apply:*)` directly, so there is no shorter path to landing a change
+  by hand-crafting a diff instead. **What this is not:** an OS-level boundary.
+  The orchestrator holds Edit/Write directly and could bypass this entirely.
+  What changed is the failure mode — bypassing the guard now requires
+  deliberate evasion, not a forgotten step. See `SECURITY.md`.
 - **Two human gates block the loop: STEP 3 (approve the proposal) and STEP 6
   (approve the exact tested tree).** All other steps chain automatically.
-- **`check_protected_paths.py` (run inside `apply_patch.py`) refuses to run at
+- **`check_protected_paths.py` (run inside `apply_edits.py`) refuses to run at
   all if no `flywheel.toml` resolves** — a missing config is not the same as a
-  config that declares nothing protected, and blessing a patch because no one
-  configured protection would be the guard's own version of the bug it exists
-  to prevent. STEP 1 echoes the resolved config up front so this is never the
-  operator's first signal that `$FLYWHEEL_CONFIG` was wrong.
+  config that declares nothing protected, and blessing a submission because no
+  one configured protection would be the guard's own version of the bug it
+  exists to prevent. STEP 1 echoes the resolved config up front so this is
+  never the operator's first signal that `$FLYWHEEL_CONFIG` was wrong.
 - **Continuous mode uses Claude Code's built-in `/loop` runner.** Use `/loop /dev-loop`; stop with Ctrl+C.
 - **Do not skip the test step.** A feature is not shipped until `uv run pytest tests/ -v` passes.
 - **Do not truncate the usage log** — historical entries are the signal for future cycles.

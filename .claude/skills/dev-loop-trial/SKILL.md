@@ -12,7 +12,8 @@ adapter, how often does the agent converge it against a held-out oracle, in
 how many cycles, and what does it do when it can't?
 
 Every control `/dev-loop` runs still runs here — the protected-path guard on
-every patch, `git apply --check`, the full test suite, the evaluator with
+every submission, the edit-validation check (`old_string` matched exactly once
+before anything is written), the full test suite, the evaluator with
 `--baseline`, and the `"regression": true` hard stop. The only difference is
 that a human does not sit at the two gates: this skill answers them by fixed
 rule, and marks every artifact it produces so a trial receipt can never be
@@ -85,14 +86,23 @@ For `cycle = 1..5`, or until convergence:
 2. **Auto Gate 1** — take the top-ranked proposal (most affected records in
    the gap report) without asking. Record which one was chosen and why.
 3. **Implement** — invoke the `implementer` subagent exactly as `/dev-loop`
-   STEP 4 does.
-4. **Apply** — `uv run python scripts/apply_patch.py <tempfile>`, the same
-   single guarded entry point. A protected-path rejection or a `git apply`
-   failure ends the *cycle* (record it as a failure mode) but not necessarily
-   the trial — if cycles remain, ask the implementer to resubmit; if not,
-   the trial ends non-converged.
+   STEP 4 does. It returns `EDITS` (structured `{file, old_string, new_string}`
+   edits, never a hand-written diff — see `implementer.md`), not a patch.
+4. **Apply** — `uv run python scripts/apply_edits.py <tempfile>`, the same
+   single guarded entry point. Exit 2 (protected-path rejection) or exit 1
+   (an edit's `old_string` not found/not unique, or a bad create) both mean
+   **nothing was written** — the submission is atomic. **Always ask the
+   implementer to resubmit the corrected, complete `EDITS` list; never hand-repair
+   an edit yourself.** (An earlier trial run did this inconsistently — repairing
+   one malformed diff in place and asking for a full resubmission on another —
+   which is exactly the inconsistency this fixed protocol removes.) If cycles
+   remain, the resubmission consumes the rest of this cycle's attempt, not a
+   new cycle; if none remain, the trial ends non-converged. Record every guard
+   rejection and every validation failure as a distinct count in the trial's
+   outcome — they measure different things (policy compliance vs. edit
+   reliability).
 5. **Test** — `uv run pytest tests/ -v`. A failure here ends the cycle the
-   same way a rejected patch does.
+   same way a rejected/invalid submission does.
 6. **Evaluate** — `eval "$EVALUATOR --baseline .dev_loop_trial_baseline.json"`.
 7. **Auto Gate 2** — **Keep** iff tests passed AND `"regression": false`.
    **Revert this cycle's patch** (`git checkout -- .`) otherwise, and stop the
@@ -114,8 +124,15 @@ Whatever the outcome (converged, non-converged, or a hard stop), record:
 ```
 trial, converged (bool), cycles_used, final_schema_f1,
 regression_blocked (bool), protected_path_rejections (count),
-failure_mode (free text, e.g. "git apply failed on cycle 3: <reason>")
+edit_validation_failures (count — old_string not found/not unique, bad create),
+failure_mode (free text, e.g. "cycle 3: old_string not unique in forbes.toml, resubmitted, then converged")
 ```
+
+`protected_path_rejections` and `edit_validation_failures` are separate counts on
+purpose — a protected-path rejection is a policy-compliance signal (did the
+implementer try to touch something it shouldn't), an edit-validation failure is
+a mechanical-reliability signal (did its edit actually apply). Conflating them
+would hide which one an anomalous trial is actually telling you about.
 
 Then unconditionally restore the pre-trial tree, so the next trial starts
 from the same empty `adapters_real/forbes.toml`:
@@ -135,9 +152,10 @@ handling) and record it alongside the trial's outcome.
 
 Write `engagements/madi_onboarding/runs/trials/README.md`: convergence rate
 (converged / N), the cycles-to-converge distribution, final schema-F1 per
-trial, regression-blocked count, protected-path-rejection count, and observed
-failure modes in plain language. This file — not any single trial — is the
-claim: an *evaluation of* an agentic system, not just a harness for one.
+trial, regression-blocked count, protected-path-rejection count,
+edit-validation-failure count, and observed failure modes in plain language.
+This file — not any single trial — is the claim: an *evaluation of* an
+agentic system, not just a harness for one.
 
 ---
 

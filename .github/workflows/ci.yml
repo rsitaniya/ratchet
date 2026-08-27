@@ -136,16 +136,22 @@ jobs:
           print("oracle OK: no-regression + well-formed + converged>seed:", conv)
           PY
 
-      # The loop must not be able to edit what scores it — including via a
-      # quoted/escaped path that fools a naive text parser but not `git apply`,
-      # or a symlink into a protected dir that a follow-up patch writes through.
-      - name: Protected-path guard rejects plain, escaped, and symlink evaluator edits
+      # The loop must not be able to edit what scores it. The implementer's
+      # output is structured {file, old_string, new_string} edits, not a diff —
+      # a rename/copy/symlink attack has no equivalent in that contract, so
+      # there is nothing left to craft one from; what remains to verify is that
+      # an ordinary edit or create naming a protected path is still rejected,
+      # and that a malformed edits file fails closed rather than defaulting open.
+      - name: Protected-path guard rejects an edit or create targeting a protected path
         run: |
           set -e
-          printf 'diff --git a/engagements/madi_onboarding/evaluate.py b/engagements/madi_onboarding/evaluate.py\n--- a/engagements/madi_onboarding/evaluate.py\n+++ b/engagements/madi_onboarding/evaluate.py\n@@ -1 +1 @@\n-x\n+y\n' > /tmp/plain.patch
-          printf 'diff --git "a/engagements/madi_onboarding/\\145valuate.py" "b/engagements/madi_onboarding/\\145valuate.py"\n--- "a/engagements/madi_onboarding/\\145valuate.py"\n+++ "b/engagements/madi_onboarding/\\145valuate.py"\n@@ -0,0 +1 @@\n+x\n' > /tmp/escaped.patch
-          printf 'diff --git a/shim b/shim\nnew file mode 120000\nindex 0000000..d488960\n--- /dev/null\n+++ b/shim\n@@ -0,0 +1 @@\n+engagements/madi_onboarding/fixtures\n' > /tmp/symlink.patch
-          for p in /tmp/plain.patch /tmp/escaped.patch /tmp/symlink.patch; do
+          python3 -c "
+          import json
+          json.dump([{'file': 'engagements/madi_onboarding/evaluate.py', 'old_string': 'x', 'new_string': 'y'}], open('/tmp/edit.json', 'w'))
+          json.dump([{'file': 'engagements/madi_onboarding/fixtures/new_gold.jsonl', 'old_string': '', 'new_string': 'x'}], open('/tmp/create.json', 'w'))
+          "
+          printf 'not valid json' > /tmp/malformed.json
+          for p in /tmp/edit.json /tmp/create.json /tmp/malformed.json; do
             if uv run python scripts/check_protected_paths.py "$p"; then
               echo "ERROR: $p was NOT rejected"; exit 1
             fi
