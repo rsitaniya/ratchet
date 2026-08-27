@@ -147,15 +147,25 @@ def test_eval_calls_counted_from_the_evaluator_log(cycle, tmp_path):
     assert rec["eval_calls"] == 2
 
 
-def test_human_seconds_counts_only_the_gates(cycle):
+def test_agent_seconds_excludes_both_gate_spans(cycle):
+    """The gate spans mix an operator thinking with orchestrator work preparing
+    that gate, and nothing marks the boundary. agent_seconds is the phases with
+    no operator in them, so it must drop gate1 and gate2 and nothing else."""
     main(["start", "--cycle", "1"])
     main(["mark", "implement"])
     main(["mark", "gate1"])
+    main(["mark", "test"])
     main(["mark", "gate2"])
     main(["finish", "--outcome", "kept"])
     (rec,) = records(cycle / "runs/delivery/cycles.jsonl")
-    expected = rec["seconds"]["gate1"] + rec["seconds"]["gate2"]
-    assert rec["human_seconds"] == pytest.approx(expected, abs=0.01)
+    expected = rec["seconds"]["implement"] + rec["seconds"]["test"]
+    assert rec["agent_seconds"] == pytest.approx(expected, abs=0.01)
+    # Stated as the exclusion identity, not `agent < total`: at unit-test speed
+    # every phase rounds to 0.0, so a strict inequality would pass or fail on
+    # timer resolution instead of on which phases were counted.
+    gates = rec["seconds"]["gate1"] + rec["seconds"]["gate2"]
+    assert rec["agent_seconds"] == pytest.approx(rec["total_seconds"] - gates, abs=0.01)
+    assert "human_seconds" not in rec
 
 
 def test_trial_cycles_are_tagged_auto(cycle):
@@ -168,22 +178,22 @@ def test_trial_cycles_are_tagged_auto(cycle):
 
 def test_summary_rates_ignore_skipped_cycles():
     recs = [
-        {"outcome": "kept", "human_seconds": 60, "total_seconds": 300, "resubmissions": 0, "eval_calls": 2},
-        {"outcome": "reverted", "human_seconds": 30, "total_seconds": 200, "resubmissions": 1, "eval_calls": 2},
-        {"outcome": "skipped", "human_seconds": 5, "total_seconds": 5},
+        {"outcome": "kept", "agent_seconds": 60, "total_seconds": 300, "resubmissions": 0, "eval_calls": 2},
+        {"outcome": "reverted", "agent_seconds": 30, "total_seconds": 200, "resubmissions": 1, "eval_calls": 2},
+        {"outcome": "skipped", "agent_seconds": 5, "total_seconds": 5},
     ]
     s = summarize(recs)
     assert s["cycles"] == 3
     assert s["decided"] == 2
     assert s["acceptance_rate"] == 0.5
-    assert s["human_minutes_per_accepted"] == 1.5
+    assert s["agent_minutes_per_accepted"] == 1.5
     assert s["first_pass_rate"] == 1.0
 
 
 def test_summary_with_no_accepted_cycle_reports_none_not_zero():
-    s = summarize([{"outcome": "reverted", "human_seconds": 30, "total_seconds": 200}])
+    s = summarize([{"outcome": "reverted", "agent_seconds": 30, "total_seconds": 200}])
     assert s["accepted"] == 0
-    assert s["human_minutes_per_accepted"] is None
+    assert s["agent_minutes_per_accepted"] is None
     assert s["first_pass_rate"] is None
 
 
@@ -192,8 +202,8 @@ def test_eval_calls_per_accepted_is_none_when_never_measured():
     # of them -- that must report None ("not measured"), never 0.0
     # ("measured, and zero calls happened").
     recs = [
-        {"outcome": "kept", "human_seconds": 60, "total_seconds": 300, "eval_calls": None},
-        {"outcome": "kept", "human_seconds": 90, "total_seconds": 400, "eval_calls": None},
+        {"outcome": "kept", "agent_seconds": 60, "total_seconds": 300, "eval_calls": None},
+        {"outcome": "kept", "agent_seconds": 90, "total_seconds": 400, "eval_calls": None},
     ]
     s = summarize(recs)
     assert s["eval_calls_per_accepted"] is None
@@ -201,8 +211,8 @@ def test_eval_calls_per_accepted_is_none_when_never_measured():
 
 def test_eval_calls_per_accepted_averages_only_measured_cycles():
     recs = [
-        {"outcome": "kept", "human_seconds": 60, "total_seconds": 300, "eval_calls": 2},
-        {"outcome": "kept", "human_seconds": 90, "total_seconds": 400, "eval_calls": 4},
+        {"outcome": "kept", "agent_seconds": 60, "total_seconds": 300, "eval_calls": 2},
+        {"outcome": "kept", "agent_seconds": 90, "total_seconds": 400, "eval_calls": 4},
     ]
     s = summarize(recs)
     assert s["eval_calls_per_accepted"] == 3.0

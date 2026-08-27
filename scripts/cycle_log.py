@@ -22,10 +22,21 @@ Durations are deltas between consecutive stamps, so phases are whatever the
 caller marks. `mark implement` twice in one cycle is a resubmission, and is
 counted as one — that is the retry signal, not an error.
 
-What is deliberately NOT recorded: token cost. Claude Code does not hand a skill
-a reliable per-subagent token count, and an invented number would undo the
-credibility the rest of the receipts earn. Wall-clock and human gate latency are
-measurable, so those are what get claimed.
+What is deliberately NOT recorded, and why:
+
+- Token cost. Claude Code does not hand a skill a reliable per-subagent count,
+  and an invented number would undo the credibility the rest of the receipts earn.
+- Human decision time. The gate spans (`analyze`->`gate1`, `evaluate`->`gate2`)
+  each contain orchestrator work as well as an operator thinking — composing the
+  proposals, rendering the diff and hash. Nothing in the loop marks the boundary
+  between the two, so any "human minutes" figure derived from them would be
+  agent time wearing a human label. Splitting them would need marks the loop does
+  not take, so the number is not claimed rather than estimated.
+
+What IS claimed is `agent_seconds`: the phases with no operator in them at all
+(everything except the two gate spans). That is the cost of the agent doing the
+work, which is the number a delivery claim actually rests on. `total_seconds`
+stays alongside it as honest wall-clock for the whole cycle, gates included.
 
 The in-progress file is scratch (gitignored). The finished JSONL is committed
 evidence, and sits under runs/ where the implementer cannot read it.
@@ -54,6 +65,11 @@ OUTCOMES = (
     "validation-failed",  # old_string not found / not unique / bad create
     "skipped",            # Gate 1 declined to start
 )
+
+# Phases whose duration is an operator at a gate plus whatever the orchestrator
+# did to prepare that gate. Excluded from agent_seconds because the record cannot
+# tell those two apart -- see the module docstring.
+GATE_PHASES = ("gate1", "gate2")
 
 # Outcomes where a control stopped the cycle rather than a human choosing to.
 CONTROL_STOPS = ("regression-blocked", "guard-rejected", "validation-failed", "tests-failed")
@@ -180,7 +196,9 @@ def cmd_finish(args) -> int:
         "control_stop": args.outcome in CONTROL_STOPS,
         "seconds": phases,
         "total_seconds": round(sum(phases.values()), 2),
-        "human_seconds": round(phases.get("gate1", 0.0) + phases.get("gate2", 0.0), 2),
+        "agent_seconds": round(
+            sum(v for k, v in phases.items() if k not in GATE_PHASES), 2
+        ),
         "resubmissions": max(0, sum(1 for m in marks if m["phase"] == "implement") - 1),
         "eval_calls": eval_call_count(Path(args.eval_log) if args.eval_log else None),
         **edit_stats(Path(args.edits) if args.edits else None),
@@ -196,8 +214,8 @@ def cmd_finish(args) -> int:
         f.write(json.dumps(record) + "\n")
     IN_PROGRESS.unlink(missing_ok=True)
 
-    print(f"cycle {record['cycle']}: {record['outcome']} in {record['total_seconds']}s "
-          f"({record['human_seconds']}s at gates) → {log}")
+    print(f"cycle {record['cycle']}: {record['outcome']} in {record['total_seconds']}s wall "
+          f"({record['agent_seconds']}s agent) → {log}")
     return 0
 
 
@@ -217,8 +235,8 @@ def summarize(records: list[dict]) -> dict:
         "first_pass_rate": (
             round(sum(1 for r in kept if not r.get("resubmissions")) / n_kept, 4) if n_kept else None
         ),
-        "human_minutes_per_accepted": (
-            round(sum(r.get("human_seconds") or 0 for r in decided) / n_kept / 60, 2) if n_kept else None
+        "agent_minutes_per_accepted": (
+            round(sum(r.get("agent_seconds") or 0 for r in decided) / n_kept / 60, 2) if n_kept else None
         ),
         "wall_minutes_per_accepted": (
             round(sum(r.get("total_seconds") or 0 for r in decided) / n_kept / 60, 2) if n_kept else None
@@ -255,9 +273,9 @@ def cmd_report(args) -> int:
     print(f"  resubmissions              {s['resubmissions']}")
     if s["first_pass_rate"] is not None:
         print(f"  accepted on first pass     {s['first_pass_rate'] * 100:.0f}%")
-    if s["human_minutes_per_accepted"] is not None:
-        print(f"  human min / accepted       {s['human_minutes_per_accepted']}")
-        print(f"  wall min / accepted        {s['wall_minutes_per_accepted']}")
+    if s["agent_minutes_per_accepted"] is not None:
+        print(f"  agent min / accepted       {s['agent_minutes_per_accepted']}")
+        print(f"  wall min / accepted        {s['wall_minutes_per_accepted']}  (incl. gates)")
         eval_calls = s["eval_calls_per_accepted"]
         print(f"  evaluator calls / accepted {eval_calls if eval_calls is not None else 'not measured'}")
     print()
@@ -266,7 +284,7 @@ def cmd_report(args) -> int:
         tag = f"trial {r['trial']} " if r.get("trial") else ""
         moved = ", ".join(f"{k} {m['before']}→{m['after']}" for k, m in (r.get("metrics") or {}).items())
         print(f"  {tag}cycle {r['cycle']:<3} {r['outcome']:<18} "
-              f"{r['total_seconds']:>7.1f}s  gates {r['human_seconds']:>6.1f}s  {moved}")
+              f"{r['total_seconds']:>7.1f}s wall  {r['agent_seconds']:>6.1f}s agent  {moved}")
     return 0
 
 
