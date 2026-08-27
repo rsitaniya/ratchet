@@ -223,10 +223,18 @@ def summarize(records: list[dict]) -> dict:
         "wall_minutes_per_accepted": (
             round(sum(r.get("total_seconds") or 0 for r in decided) / n_kept / 60, 2) if n_kept else None
         ),
-        "eval_calls_per_accepted": (
-            round(sum(r.get("eval_calls") or 0 for r in decided) / n_kept, 2) if n_kept else None
-        ),
+        "eval_calls_per_accepted": _eval_calls_per_accepted(kept),
     }
+
+
+def _eval_calls_per_accepted(kept: list[dict]) -> float | None:
+    """None when no kept cycle ever recorded eval_calls (no --eval-log was
+    passed) -- that is "not measured", never the same fact as "measured, zero
+    calls". Averaging unset values as 0 would silently claim the latter."""
+    measured = [r["eval_calls"] for r in kept if r.get("eval_calls") is not None]
+    if not measured:
+        return None
+    return round(sum(measured) / len(kept), 2)
 
 
 def cmd_report(args) -> int:
@@ -250,7 +258,8 @@ def cmd_report(args) -> int:
     if s["human_minutes_per_accepted"] is not None:
         print(f"  human min / accepted       {s['human_minutes_per_accepted']}")
         print(f"  wall min / accepted        {s['wall_minutes_per_accepted']}")
-        print(f"  evaluator calls / accepted {s['eval_calls_per_accepted']}")
+        eval_calls = s["eval_calls_per_accepted"]
+        print(f"  evaluator calls / accepted {eval_calls if eval_calls is not None else 'not measured'}")
     print()
     print("── Per cycle ───────────────────────────────────────────")
     for r in records:

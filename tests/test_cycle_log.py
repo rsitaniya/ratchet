@@ -187,6 +187,27 @@ def test_summary_with_no_accepted_cycle_reports_none_not_zero():
     assert s["first_pass_rate"] is None
 
 
+def test_eval_calls_per_accepted_is_none_when_never_measured():
+    # No kept cycle here ever passed --eval-log, so eval_calls is None on all
+    # of them -- that must report None ("not measured"), never 0.0
+    # ("measured, and zero calls happened").
+    recs = [
+        {"outcome": "kept", "human_seconds": 60, "total_seconds": 300, "eval_calls": None},
+        {"outcome": "kept", "human_seconds": 90, "total_seconds": 400, "eval_calls": None},
+    ]
+    s = summarize(recs)
+    assert s["eval_calls_per_accepted"] is None
+
+
+def test_eval_calls_per_accepted_averages_only_measured_cycles():
+    recs = [
+        {"outcome": "kept", "human_seconds": 60, "total_seconds": 300, "eval_calls": 2},
+        {"outcome": "kept", "human_seconds": 90, "total_seconds": 400, "eval_calls": 4},
+    ]
+    s = summarize(recs)
+    assert s["eval_calls_per_accepted"] == 3.0
+
+
 def test_report_on_an_empty_log_says_so(cycle, capsys):
     assert main(["report"]) == 0
     assert "No delivery telemetry yet" in capsys.readouterr().out
