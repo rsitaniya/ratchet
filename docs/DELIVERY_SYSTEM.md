@@ -117,7 +117,7 @@ CI runs those checks on Python 3.11, 3.12, and 3.13. Its engagement job also:
 - fails on a transport-level simulator exception;
 - checks evaluator progression and regression invariants;
 - rejects protected-path edits;
-- denies the implementer’s reads of gold, fixtures, and receipts, including through a parent directory, and confirms the guard is still wired into that subagent;
+- denies the implementer’s reads of gold, fixtures, and receipts, including through a parent directory and through a `Grep` naming no path at all, and confirms the guard is still wired into that subagent and that the session-wide gold deny is still present;
 - records one end-to-end cycle and checks its derived economics; and
 - recomputes every committed synthetic receipt and verifies recorded change hashes.
 

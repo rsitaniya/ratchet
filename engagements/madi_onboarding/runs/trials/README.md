@@ -4,6 +4,11 @@
 
 These are measurement runs. Both gates were auto-answered, every run started from the committed empty `adapters_real/forbes.toml`, and the tree was reverted afterwards. They are not human-approved delivery cycles.
 
+**This is the weakest real-data evidence in the repo, and deliberately so.** Read it after the [three human-gated `fullcontact` cycles](../delivery/cycles.jsonl), not before. Two things separate them:
+
+- **Difficulty.** Forbes' columns self-describe (`company`, `region`, `asset_value`), so the mapping is largely readable off the header row. `fullcontact`'s are anonymized to `Attribute_1..6`, so the mapping has to come from record values. Five successes here say little about the harder case.
+- **Receipts.** A trial reverts the tree by design — that is what makes it repeatable from a fixed baseline — so there is no landed state to commit and the table below is a hand-recorded summary, not a reproducible artifact. The `fullcontact` cycles are committed records that CI recomputes. Where the two disagree about what the loop can do, the receipted run is the one that counts.
+
 ## Protocol
 
 - **Runs:** 5
