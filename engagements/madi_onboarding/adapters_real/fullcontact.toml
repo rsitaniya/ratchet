@@ -15,3 +15,15 @@ normalizer = "identity"
 [fields.Attribute_2]
 target = "name"
 normalizer = "identity"
+
+[fields.Attribute_3]
+target = "country"
+normalizer = "country_to_iso"
+
+[fields.Attribute_4]
+target = "city"
+normalizer = "identity"
+
+[fields.Attribute_6]
+target = "founded"
+normalizer = "to_int_year"
