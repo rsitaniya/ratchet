@@ -1,0 +1,9 @@
+# The real-data test split's fullcontact adapter. Starts with NO field mappings.
+# fullcontact's real CSV columns are anonymized (Attribute_1..Attribute_6, no
+# header names), unlike real forbes' self-descriptive columns — this is the
+# harder schema-mapping task the convergence trials never exercised. The loop
+# fills this file in; evaluate.py scores it against gold_mapping.json under
+# data/madi/.
+source = "fullcontact"
+
+[fields]

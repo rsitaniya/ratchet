@@ -1,0 +1,63 @@
+# Real-data TEST split of the same engagement: scores adapters against MaDI-Bench's
+# fullcontact CSV (anonymized Attribute_1..6 columns, no header names) and its own
+# schema-matching gold, instead of the synthetic fixtures/ used every dev cycle
+# (flywheel.toml) or real forbes' self-descriptive columns (flywheel.real.toml).
+# Selected the same way:
+#   export FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.real_fullcontact.toml
+#
+# fullcontact is the harder real split: forbes' 5/5 convergence trials never
+# exercised genuine column ambiguity (its columns self-describe the target).
+# fullcontact's headers give no signal at all — the mapping has to come from
+# record values.
+#
+# Preconditions (run once, from repo root):
+#   uv run python engagements/madi_onboarding/download_data.py
+#   uv run python engagements/madi_onboarding/csv_to_ingest.py --source fullcontact
+#   uv run python engagements/madi_onboarding/prepare_real_eval.py
+#
+# Only sm_mapping_gold.json is pinned for the real benchmark — no normalized-value
+# gold — so this split only scores schema_f1 and integrated_rate; value_recall and
+# fully_correct_rate report null (see evaluate.py, prepare_real_eval.py).
+
+[app]
+module = "engagements.madi_onboarding.app.main:app"
+base_url = "http://localhost:8000"
+usage_log = "usage_log_real_fullcontact.jsonl"     # → engagements/madi_onboarding/usage_log_real_fullcontact.jsonl
+target_schema = "data/madi/target_schema.json"     # real MaDI target schema, not the synthetic one
+adapters_dir = "adapters_real"                     # separate write surface — starts empty, like adapters_real/forbes.toml
+evaluator = "python engagements/madi_onboarding/evaluate.py --fixtures engagements/madi_onboarding/data/madi --adapters engagements/madi_onboarding/adapters_real --sources fullcontact"
+analyzer = "python engagements/madi_onboarding/analyze_integration.py --source fullcontact"
+
+[protected]
+# Same reasons as flywheel.real.toml, plus this file itself.
+paths = [
+    "**/evaluate.py",
+    "**/adapters.py", "**/matching.py", "**/fusion.py",
+    "**/similarity.py",
+    "**/fixtures/**",
+    "**/gold_*.json", "**/*_gold.json",
+    "**/gold_*.jsonl", "**/*_gold.jsonl",
+    "**/flywheel.toml", "**/flywheel.real.toml", "**/flywheel.real_fullcontact.toml",
+    "scripts/**",
+    ".claude/**",
+    "**/prepare_real_eval.py",
+    "**/data/madi/**",
+]
+
+# Read boundary (check_readable.py, hooked into the implementer subagent only).
+# Same reasoning as flywheel.real.toml: data/madi/sources/*.jsonl stays READABLE
+# because the implementer needs real column values to guess the mapping — with
+# anonymized headers, record values are the *only* signal available. No value
+# gold exists for this split to leak through them.
+unreadable = [
+    "**/fixtures/**",
+    "**/gold_*.json", "**/*_gold.json",
+    "**/gold_*.jsonl", "**/*_gold.jsonl",
+    "**/runs/**",
+]
+
+[simulator]
+default_requests = 30
+
+[traffic]
+replay_file = "replay_real_fullcontact.jsonl"      # → engagements/madi_onboarding/replay_real_fullcontact.jsonl
