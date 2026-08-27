@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "dev-flywheel"
 version = "0.5.0"
-description = "A FastAPI service that ships its own features from its own usage data — a closed, agentic development loop."
+description = "A controlled, human-gated delivery loop that turns API signals into evaluated changes."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"

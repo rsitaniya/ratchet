@@ -25,7 +25,7 @@ This is a local, single-operator benchmark harness. It is not an autonomous depl
 |---|---|---|
 | Can a new source be onboarded without breaking an existing one? | `forbes` schema F1: `0.00 → 1.00`; value recall: `0.00 → 1.00`; no `dbpedia` regression across two recorded cycles. | The reference onboarding loop can improve a bounded adapter against held-out synthetic gold. |
 | Can the same loop handle a different kind of correctness? | Entity-matching F1: `0.00 → 1.00`; fusion accuracy: `0.875 → 1.00`; no source regression across two recorded cycles. | The same controls work when the change surface moves from field mapping to matching and fusion rules. |
-| Does the agent converge on a separate real-data mapping task? | Five auto-gated trials on real MaDI-Bench Forbes data converged in one cycle each to schema F1 `1.00`. Two first responses had malformed diffs, leading to the current structured-edit handoff. | On this low-ambiguity mapping task, the measured implementer converged reliably and exposed a concrete delivery-mechanics weakness. |
+| Does the implementer converge on a separate real-data mapping task? | Five auto-gated trials on real MaDI-Bench Forbes data reached schema F1 `1.00` in one cycle each. | On this low-ambiguity mapping task, the implementer reached the documented target under the recorded trial protocol. |
 
 The [receipt index](engagements/madi_onboarding/runs/MADI_EXAMPLE.md) contains every synthetic-cycle input, gap report, edit, hash, and evaluator output. The [trial report](engagements/madi_onboarding/runs/trials/README.md) contains the real-data trial protocol, failures, and limits.
 
@@ -34,10 +34,20 @@ The [receipt index](engagements/madi_onboarding/runs/MADI_EXAMPLE.md) contains e
 | Decision | Why it exists | Evidence and limit |
 |---|---|---|
 | **Signal before change** | A telemetry analyzer ranks concrete integration failures before an agent proposes work. | The two reference engagements start from replayed traffic and gap reports. An analyzer still needs domain knowledge. |
-| **Structured edits, not model-authored diffs** | Two of five early trial attempts produced malformed diff bookkeeping. Exact `old_string` validation gives the model a simpler, checkable handoff. | `apply_edits.py` applies all edits atomically or none. The orchestrator remains a trusted writer. |
+| **Structured edits, not model-authored diffs** | A read-only implementer cannot verify diff hunk bookkeeping. Exact `old_string` validation gives it a simpler, checkable handoff. | `apply_edits.py` applies all edits atomically or none. The orchestrator remains a trusted writer. |
 | **Independent evaluation** | HTTP success cannot establish schema, value, matching, or fusion correctness. | Gold, fixtures, scorer, engines, and receipts sit outside the implementer’s tool grants and writable surface. Tool grants are not OS permissions. |
 | **Separate real-data trial** | A fitted dev-fixture adapter may overfit aggregate score feedback. | The real MaDI configuration uses a separate adapter surface and oracle. The measured task is low-ambiguity and does not establish general agent reasoning ability. |
 | **Two human gates** | Scope and final acceptance are accountable decisions. | Gate 1 approves the proposal. Gate 2 approves the exact tested result. The loop never merges or deploys itself. |
+
+## How known failures behave
+
+| Failure | Current response |
+|---|---|
+| An edit targets the evaluator, gold, fixtures, engines, or receipts | The protected-path guard rejects it before any write. |
+| An edit was prepared against stale or ambiguous source text | `apply_edits.py` rejects the full submission. Every `old_string` must match exactly once. |
+| A candidate improves one metric and regresses another | Gate 2 compares evaluator output with the pre-cycle baseline and blocks a regression. |
+| The simulator cannot reach the API or misses its discovered behavior | CI fails on a transport exception and requires telemetry for `/ingest` and `/reconcile`. |
+| The evaluator cannot represent a quality problem | The result remains unproven. The real-data trial and documented limits expose that gap; they do not conceal it. |
 
 ## Read the work at the right depth
 

@@ -8,7 +8,7 @@ The reference API accepts company records from several partner sources. Its cano
 
 `dbpedia` already works. A new `forbes` source arrives with different field names, string years, country names, and currency-formatted values. The API can accept every request while producing unusable records. The task is to improve the new source without damaging the working one.
 
-That solved only the first problem. Once sources are onboarded, the system must decide which records describe the same company and how to resolve attributes that disagree. The engagement uses one delivery loop for both decisions.
+The engagement evaluates two current correctness surfaces. It maps a source into the canonical schema, then decides which records describe the same company and how to resolve attributes that disagree. One delivery loop governs both surfaces.
 
 ## The operating boundary
 
@@ -16,7 +16,7 @@ The loop begins with replayed traffic and structured integration failures. An en
 
 The implementer cannot read or write the evaluator, gold labels, fixtures, matching engine, fusion engine, or prior receipts through its Claude Code grants. It can change adapters and rules. This is a workflow control for a local harness. It is not an operating-system security boundary.
 
-## First delivery cycle: onboarding `forbes`
+## Onboarding `forbes`
 
 The synthetic dev split contains six `forbes` records and a working `dbpedia` source. The empty adapter is the baseline. Cycle 1 maps required fields. Cycle 2 maps optional attributes, adds `sales → revenue`, and normalizes country and money values.
 
@@ -30,7 +30,7 @@ The synthetic dev split contains six `forbes` records and a working `dbpedia` so
 
 The [onboarding receipts](runs/MADI_EXAMPLE.md#forbes-onboarding-schema-matching--value-normalization) link the baseline, gap reports, adapter snapshots, change artifacts, hashes, and literal evaluator output. The repository ships the empty adapter so a reader can begin from the same state. The receipts preserve the converged states.
 
-## Second delivery cycle: reconciliation
+## Reconciliation
 
 Correct ingestion exposes a different failure. The benchmark contains five gold entity pairs across sources. The seed matching rules find none. Without matched pairs, live telemetry has no fusion conflicts to report.
 
@@ -46,7 +46,7 @@ Cycle 1 replaces exact-name matching with fuzzy, exclusive matching. Exclusive a
 
 The [reconciliation receipts](runs/MADI_EXAMPLE.md#reconcile-entity-matching--data-fusion) show why the cycles occur in that order. They also show the narrow change surface: matching rules in cycle 1, fusion rules in cycle 2.
 
-## A separate real-data trial
+## Separate real-data measurement
 
 The synthetic dev split makes every cycle fast and reproducible. It cannot answer whether a fitted adapter transfers to a source it has not seen. The real MaDI-Bench Companies split provides that separate task.
 
@@ -54,7 +54,7 @@ The real `forbes` export has 2,000 records and seven raw fields with no names sh
 
 Five auto-gated trials started from the empty real-data adapter. Every trial converged in one cycle to schema F1 `1.00`, with no regression and two evaluator invocations per trial. The [trial report](runs/trials/README.md) records the full protocol and each result.
 
-The trial also found a delivery-mechanics failure. Two of five first implementer responses had malformed unified diffs. Their mapping intent was correct. Their hunk bookkeeping was not. The loop now uses structured `{file, old_string, new_string}` edits and `apply_edits.py` validates every exact prior string before any write occurs. One bad edit rejects the whole submission.
+The current handoff uses structured `{file, old_string, new_string}` edits. `apply_edits.py` validates each target path and exact prior string before any write occurs. One bad edit rejects the whole submission. This removes diff hunk bookkeeping from the implementer’s task.
 
 The real-data trial is a bounded result. The source mapping has low ambiguity. Five successes do not establish general agent reasoning ability, broad reliability, or production readiness.
 
@@ -63,7 +63,7 @@ The real-data trial is a bounded result. The source mapping has low ambiguity. F
 - An integration loop can work from domain failures instead of an open-ended prompt.
 - Independent evaluation can cover schema mapping, normalized values, entity matching, fusion, and source regression.
 - A control pattern can carry across different change surfaces: adapters, matching rules, and fusion rules.
-- Measured agent behavior can change the system design. The structured-edit contract came from observed diff failures.
+- The structured-edit contract removes diff hunk bookkeeping from the implementer’s task.
 - A separate data split can expose a synthetic-fixture result that fails to transfer.
 
 ## Limits

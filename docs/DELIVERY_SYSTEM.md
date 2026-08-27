@@ -20,7 +20,7 @@ The implementer is read-only. It returns structured edits:
 [{"file": "path/to/file", "old_string": "exact existing text", "new_string": "replacement text"}]
 ```
 
-Earlier real-data trials found malformed unified diffs in two of five first responses. The requested mapping was sound. Hunk counts and context were not. A structured edit removes that bookkeeping from the model’s task.
+A unified diff requires hunk counts and exact context. A read-only implementer cannot verify those details against the worktree. A structured edit removes that bookkeeping from the model’s task.
 
 `scripts/apply_edits.py` is the single write entry point. It checks every target path, then confirms each `old_string` occurs exactly once in the current file, then writes the full submission. One bad edit rejects all edits. The orchestrator owns that mutation step.
 
@@ -38,7 +38,7 @@ The synthetic MaDI fixtures are the development split. They are small, determini
 
 The real MaDI-Bench configuration uses separate raw data, schema gold, and `adapters_real/` write surface. It measures a mapping against a distribution whose source columns do not overlap with the synthetic source. The trial harness records evaluator invocations, so oracle use is observable.
 
-The real-data result is intentionally narrow: five auto-gated runs converged on one low-ambiguity mapping task. It is useful evidence about this harness. It is not a general reliability claim.
+The real-data measurement is intentionally narrow: five auto-gated runs reach the target on one low-ambiguity mapping task. It is evidence about this harness. It is not a general reliability claim.
 
 ### 5. Keep acceptance attributable
 
