@@ -1,17 +1,48 @@
-# Delivery system architecture
+# Delivery-system architecture
 
 **Reader:** an engineer assessing whether the loop is reusable, testable, and bounded.
 
-`dev-flywheel` turns observed API behavior into a reviewed change. It is not an autonomous deployment system and it does not replace product discovery.
+`dev-flywheel` turns an observed API failure into a reviewed change. The design treats agent output as an input to a control system. It does not treat an agent as an autonomous deployer.
 
-## System boundary
+## The decisions behind the design
 
-| In the system | Outside the system |
-|---|---|
-| Schema-driven traffic generation | Customer authentication, tenancy, and production hosting |
-| Usage telemetry and gap analysis | Product prioritization without a human decision |
-| A read-only implementer and diff-based handoff | Autonomous merges or deployments |
-| Tests, optional evaluator, protected-path checks | A filesystem security boundary |
+### 1. Start with a signal
+
+A loop needs a reason to change. The simulator generates traffic from OpenAPI or a configured replay. Middleware records append-only usage events. An engagement-specific analyzer turns those events into ranked gaps.
+
+There is no generic analyzer fallback. An integration gap has domain meaning. The MaDI analyzer understands unmapped fields, bad formats, missing required values, matching failures, and fusion conflicts. Another engagement must provide its own analyzer through `[app].analyzer`.
+
+### 2. Give the implementer a handoff it can produce reliably
+
+The implementer is read-only. It returns structured edits:
+
+```json
+[{"file": "path/to/file", "old_string": "exact existing text", "new_string": "replacement text"}]
+```
+
+Earlier real-data trials found malformed unified diffs in two of five first responses. The requested mapping was sound. Hunk counts and context were not. A structured edit removes that bookkeeping from the model’s task.
+
+`scripts/apply_edits.py` is the single write entry point. It checks every target path, then confirms each `old_string` occurs exactly once in the current file, then writes the full submission. One bad edit rejects all edits. The orchestrator owns that mutation step.
+
+### 3. Keep the evaluator outside the change surface
+
+HTTP status measures transport. It does not measure domain correctness. The evaluator scores the properties that matter to an engagement: mapping, normalized values, matching, fusion, and regression.
+
+The MaDI evaluator, gold labels, fixtures, matching engine, fusion engine, and run receipts are protected. The ordinary change surface is adapters and declarative rules. Claude Code deny rules keep protected material outside the implementer’s `Read`, `Grep`, and `Glob` grants. The protected-path guard checks each returned edit before a write.
+
+This boundary is enforced for the documented implementer. It is not a filesystem sandbox. The orchestrator and a human session can hold broader permissions. [SECURITY.md](../SECURITY.md) describes the distinction and its consequences.
+
+### 4. Separate rapid iteration from an independent test
+
+The synthetic MaDI fixtures are the development split. They are small, deterministic, and scored at every Gate 2. Repeated score feedback can create an overfitting channel even when the implementer cannot read the gold.
+
+The real MaDI-Bench configuration uses separate raw data, schema gold, and `adapters_real/` write surface. It measures a mapping against a distribution whose source columns do not overlap with the synthetic source. The trial harness records evaluator invocations, so oracle use is observable.
+
+The real-data result is intentionally narrow: five auto-gated runs converged on one low-ambiguity mapping task. It is useful evidence about this harness. It is not a general reliability claim.
+
+### 5. Keep acceptance attributable
+
+Gate 1 approves the work’s scope. Gate 2 approves the exact tested result. The system cannot merge or deploy on its own. This preserves a person’s responsibility for product relevance and acceptance risk.
 
 ## Runtime
 
@@ -19,66 +50,42 @@
 flowchart LR
     S[Schema or replay] --> T[Simulator]
     T --> L[Append-only telemetry]
-    L --> A[Analyzer]
-    A --> P[Orchestrator proposes from signal]
+    L --> A[Engagement analyzer]
+    A --> P[Scoped proposal]
     P --> G1{Human approves scope}
-    G1 --> I[Read-only implementer edits]
-    I --> C[apply_edits.py: protected-path guard + old_string validation]
+    G1 --> I[Read-only structured edits]
+    I --> C[Path and exact-match validation]
     C --> V[Tests and evaluator]
-    V --> G2{Human approves tested patch}
-    G2 --> N[Next schema-visible behavior]
+    V --> G2{Human approves tested change}
+    G2 --> N[Schema-visible behavior]
     N --> T
 ```
 
-The loop only closes when the simulator can discover the result of a shipped change from the API schema or a configured replay. The implementer — the only subagent in the loop — cannot write to the worktree; the orchestrator owns mutation and both human gates. Proposing 2-3 features from the signal report (the step between the analyzer and Gate 1) does not warrant its own subagent: the orchestrator already holds the report and the app source that step needs, and a few sentences a human then chooses between at Gate 1 is not an isolation boundary worth a round-trip.
+The loop closes when the simulator can discover the result of a shipped change from the API schema or configured replay. The analyzer produces the signal. The implementer produces edits. The orchestrator performs writes and gates.
 
 ## Contracts
 
-| Contract | Producer | Consumer | Why it exists |
+| Contract | Producer | Consumer | Purpose |
 |---|---|---|---|
-| OpenAPI schema or replay JSONL | API / engagement | simulator | New behavior is exercised without hand-editing the simulator. |
-| Usage JSONL | middleware | analyzer | Records requests, 404s, status, latency, inputs, and source metadata. |
-| Signal report | engagement's required analyzer | orchestrator | Converts individual events into ranked product or integration gaps; there is no generic fallback, so `[app].analyzer` is required. |
-| Structured edits (`file`, `old_string`, `new_string`) | implementer | orchestrator | Gives each mutation a reviewable, checkable handoff — and one the model can produce reliably, since it never hand-computes a diff hunk header or line count. |
-| Evaluator JSON | independent scorer | gate 2 | Separates “HTTP worked” from domain correctness. |
-| `flywheel.toml` | operator | loop | Selects the app, paths, evaluator, required analyzer, and protected paths. |
+| OpenAPI schema or replay JSONL | API / engagement | simulator | Exercises current behavior without maintaining a hand-written endpoint list. |
+| Usage JSONL | middleware | analyzer | Carries request shape, status, latency, inputs, source metadata, and run ID. |
+| Signal report | engagement analyzer | orchestrator | Turns events into a scoped engineering decision. |
+| Structured edits | implementer | `apply_edits.py` | Supplies an exact, reviewable mutation request. |
+| Evaluator JSON | independent scorer | Gate 2 | Separates request success from domain progress and regression. |
+| `flywheel.toml` | operator | loop | Selects the app, analyzer, evaluator, paths, traffic, and protected assets. |
 
-## Generic layer and engagement layer
+## Reuse boundary
 
-| Generic layer | Engagement layer |
-|---|---|
-| `scripts/simulate.py` synthesizes HTTP requests from OpenAPI or replays supplied requests. | `engagements/madi_onboarding/to_replay.py` expresses partner records as `/ingest` traffic. |
-| `[app].analyzer` is a required config key with no generic fallback — an engagement's telemetry shape is its own. | `analyze_integration.py` ranks field-level onboarding gaps; this is the engagement's own analyzer. |
-| `apply_edits.py` / `check_protected_paths.py` reject edits that touch configured protected paths, and refuse to run at all with no config resolved. | The MaDI evaluator, fixtures, gold labels, `runs/` receipts, matching, and fusion engines are protected. |
-| The read-only implementer returns structured edits; the orchestrator applies them. | Adapter and rule files are the ordinary writable extension points. |
+The generic layer owns traffic generation, configuration loading, edit validation, gates, and common test commands. The engagement layer owns the API, telemetry interpretation, evaluator, fixtures, gold, adapters, and rules.
 
-The seam is configuration, not a fork of the loop: the orchestration, traffic generation, diff validation, and gates are domain-free, and everything domain-specific is named in one `flywheel.toml`. This repo proves that with two configs against the same loop — `engagements/madi_onboarding/flywheel.toml` (synthetic dev fixtures, scored every cycle) and `flywheel.real.toml` (real MaDI-Bench data, scored once as a held-out test split) — not just one. See [the adaptation guide](ADAPTING.md) for the required interface.
+The seam is configuration rather than a fork. This repository exercises it with two MaDI configurations:
 
-## Safety model
+- `flywheel.toml` selects the synthetic development split and evaluator.
+- `flywheel.real.toml` selects the separate real-data source, oracle, and adapter surface.
 
-| Control | Mechanism | Limit |
-|---|---|---|
-| Mutation boundary | The read-only implementer; structured edits, not diffs; `scripts/apply_edits.py` (guard, then `old_string` validation, then write, in that order, atomically, with no path around it) | The orchestrator still holds Edit/Write directly and its own configured tool permissions. |
-| Evaluation boundary | Protected-path guard, fail-closed with no config resolved; Claude Code deny rules for fixtures/gold/`runs/` | Deny rules are not operating-system permissions. |
-| Score-delta channel | Real MaDI-Bench data scored once, offline, never during a cycle — a distribution the fitted synthetic adapter cannot transfer to | See [SECURITY.md](../SECURITY.md) for the full argument. |
-| Regression boundary | Evaluator compares Gate-2 output with a pre-cycle baseline | Only configured evaluator metrics are covered. |
-| Human decision | Gate 1 selects scope; Gate 2 accepts the tested patch | Human review remains necessary for relevance and quality. |
-| Simulator origin | URL guard rejects a cross-origin join | This is not a substitute for production network controls. |
+An [adaptation guide](ADAPTING.md) defines the minimum contract for another FastAPI API.
 
-Full threat model: [SECURITY.md](../SECURITY.md).
-
-## Why the design is useful for applied AI delivery
-
-The system makes four concerns explicit instead of relying on an agent prompt:
-
-1. **Signal:** what observable failure or unmet demand justifies the work?
-2. **Scope:** what can change, and who approves it?
-3. **Evaluation:** what independent measure proves domain progress and detects regression?
-4. **Reuse:** what configuration or abstraction converts a local solution into a repeatable capability?
-
-The [reference engagement](../engagements/madi_onboarding/CASE_STUDY.md) exercises each concern against a held-out oracle.
-
-## Engineering checks
+## Executable checks
 
 ```bash
 uv sync --all-extras --locked
@@ -86,19 +93,21 @@ uv run pytest tests/ -q
 uv run ruff check .
 ```
 
-CI runs those checks on Python 3.11, 3.12, and 3.13 in one job. A second job boots the MaDI
-onboarding engagement itself, replays its `forbes` fixture and ranks the resulting integration
-gaps, then — with `FLYWHEEL_CONFIG` unset — re-runs the simulator against the same live app to
-prove zero-domain-config discovery, checks the evaluator's regression and progression invariants,
-confirms the protected-path guard rejects an edit or create targeting the evaluator or fixtures, and
-recomputes every committed `runs/forbes/` and `runs/reconcile/` receipt from its committed
-snapshot (adapter/rule TOML) to prove they still reproduce byte-for-byte, including a
-`git hash-object` check against every recorded `*.diff_hash.txt`. See
-[CI](../.github/workflows/ci.yml) for the executable contract.
+CI runs those checks on Python 3.11, 3.12, and 3.13. Its engagement job also:
+
+- starts the MaDI API and replays the onboarding traffic;
+- verifies zero-domain-config discovery reaches `/ingest` and `/reconcile`;
+- fails on a transport-level simulator exception;
+- checks evaluator progression and regression invariants;
+- rejects protected-path edits; and
+- recomputes every committed synthetic receipt and verifies recorded change hashes.
+
+The workflow is the executable source of truth: [CI configuration](../.github/workflows/ci.yml).
 
 ## Non-goals
 
-- No claim of autonomous production deployment.
-- No claim that synthetic benchmark results establish customer impact.
-- No generic guarantee that a protected evaluator is secure outside the documented local, single-operator model.
-- No assumption that a 404 is sufficient evidence to ship a feature without human judgment.
+- Autonomous production deployment.
+- A general proof that protected evaluation is secure outside the documented local workflow.
+- Evidence of customer impact from synthetic benchmark metrics.
+- A generic entity-resolution engine for high-volume data.
+- Product prioritization without a human decision.

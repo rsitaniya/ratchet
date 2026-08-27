@@ -1,11 +1,8 @@
-# Run receipts
+# Synthetic-cycle receipts
 
-Committed evidence for the numbers in the top-level [README](../../../README.md#reference-engagement-partner-data-onboarding)
-and [CASE_STUDY.md](../CASE_STUDY.md): the adapter at each cycle, the evaluator's
-JSON output before and after, the gap report that motivated the cycle, and the
-diff + its hash. Nothing here is asserted — every number is the literal output of
-`evaluate.py` run against the exact adapter snapshot committed alongside it in this
-directory; the commands below reproduce each one byte-for-byte from the same inputs.
+**What this proves:** the documented onboarding and reconciliation changes reproduce from their committed inputs. Each receipt links the input state, gap report, change artifact, hash, and evaluator output.
+
+These are raw records for the [README](../../../README.md) and [case study](../CASE_STUDY.md). The numbers below are literal `evaluate.py` output from the committed adapter or rule snapshot beside them. They establish reproducibility on the synthetic split. They do not establish the real-data trial result, scale, or customer impact.
 
 ## forbes onboarding (schema matching + value normalization)
 

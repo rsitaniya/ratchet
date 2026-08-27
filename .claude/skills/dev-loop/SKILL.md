@@ -155,7 +155,7 @@ Invoke the **implementer** subagent:
 
 ```
 Agent: implementer
-Input: "Implement: [chosen feature name and description]. Read <app source file from config> for context (its import path is <app.module from config>). Return EDITS, TEST_FILE, and CHANGELOG."
+Input: "Implement: [chosen feature name and description]. Read <app source file from config> for context (its import path is <app.module from config>). Return EDITS and TEST_FILE."
 ```
 
 The subagent returns structured output with exact delimiters:
@@ -170,7 +170,6 @@ EDITS:
 
 TEST_FILE: tests/test_[name].py
 
-CHANGELOG: [one-line summary]
 ````
 
 **Orchestrator applies ALL the writes (the orchestrator is the sole writer):**
@@ -193,15 +192,8 @@ CHANGELOG: [one-line summary]
    A submission is atomic: one bad edit means none of them land, so a retry
    resubmits the whole list, not a patch to the failing entry.
 2. **Test path sanity** — Confirm `TEST_FILE:` exists after the edits are applied and is under `tests/`.
-3. **Changelog** — In `CHANGELOG.md`, insert (or append to) a `## [Unreleased]`
-   entry under `### Added` with the `CHANGELOG:` line.
-4. **Version bump (only if `[app].version_files` is non-empty)** — Most cycles
-   change a few lines of adapter or rule TOML; treat a version release as a
-   deliberate operator action, not something every cycle pays for. When
-   `version_files` is set: determine the next minor version (read the current
-   `version=` from `[app].module`; bump the minor), move the `## [Unreleased]`
-   section to `## [<new-version>] - <today>`, and use **Edit** to update the
-   version string in every file listed in `[app].version_files`.
+3. **Versioning** — A cycle does not change a version by default. Versioning is
+   an explicit operator release decision outside this skill.
 
 ---
 
@@ -220,8 +212,8 @@ uv run pytest tests/ -v
 
 ## STEP 6 — HUMAN APPROVAL: GATE 2 (approve the exact tested tree) ⏸
 
-**The second gate, and it runs after every edit this cycle — code, tests,
-changelog, and (when applicable) version are all applied by now.** Approving
+**The second gate runs after every edit this cycle — code and tests are applied
+by now.** Approving
 what to build (Gate 1) does not authorize whatever the implementer produced. An
 agent can make tests pass by weakening them; a held-out evaluator plus a human
 reading the actual diff are what catch that.
@@ -307,7 +299,6 @@ Report to the user:
 - Cycle number (track a counter starting at 1; increment each loop)
 - What feature was implemented
 - Test results (pass/fail count)
-- CHANGELOG entry added
 - Whether the new operation appears in the simulator
 
 This skill intentionally performs one complete cycle and exits. The fully automated

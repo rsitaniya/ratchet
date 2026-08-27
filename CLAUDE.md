@@ -1,6 +1,6 @@
 # dev-flywheel — Agentic Dev Loop
 
-The orchestration, traffic generation, diff validation, and gates are domain-free;
+The orchestration, traffic generation, structured-edit validation, and gates are domain-free;
 everything domain-specific is named in one `flywheel.toml` and an
 `engagements/<name>/` package — see `docs/ADAPTING.md`. Two configs in this repo
 select two different datasets, protected sets, and oracles against the same loop:
@@ -47,20 +47,19 @@ uv run python engagements/madi_onboarding/to_replay.py --source forbes
 | `scripts/apply_edits.py` | The single guarded entry point for landing structured edits — runs the protected-path guard, then validates every edit's exact match, then writes, in that order, atomically |
 | `engagements/madi_onboarding/` | Reference engagement: partner-data onboarding, ingest app, adapters, protected evaluator, its own analyzer, case study |
 | `tests/` | FastAPI TestClient tests — run with `uv run pytest tests/ -v` |
-| `CHANGELOG.md` | Updated each cycle by the orchestrator |
 | `docs/ADAPTING.md` | How to point the loop at your own API |
 | `.claude/agents/` | The `implementer` subagent (read-only — orchestrator writes) |
 | `.claude/skills/` | Orchestrator skills: simulate, dev-loop, dev-loop-trial |
 
 ## Conventions
 
-- **One subagent, `implementer`, and its restriction is mechanical.** It holds `Read, Grep, Glob` — no Bash, no Edit, no Write — so a returned diff is its only mutation path, and Claude Code's own deny rules block it from reading fixtures, gold, or `runs/` at the tool level. Everything else in the loop (feature proposal, the guard, the evaluator, version bumps) is deterministic code or a human at one of the two gates — not a second or third subagent role.
+- **One subagent, `implementer`, and its restriction is mechanical.** It holds `Read, Grep, Glob` — no Bash, no Edit, no Write — and returns structured edits as its only mutation request. Claude Code's deny rules block it from reading fixtures, gold, or `runs/` at the tool level. Everything else in the loop (feature proposal, the guard, the evaluator) is deterministic code or a human at one of the two gates — not a second or third subagent role.
 - **Tests use FastAPI TestClient** (in-process). The simulator uses httpx against the live server.
 - **Server must be running** before invoking /simulate or /dev-loop.
 - **usage_log.jsonl is runtime telemetry.** It is append-only during a run, but gitignored so local simulator traffic does not dirty the submission.
 - **Loop closure:** The simulator re-fetches /openapi.json each cycle, so new endpoints are exercised automatically without editing the simulator.
 - **Continuous mode:** Use `/loop /dev-loop`; `/dev-loop` itself is one complete cycle. `/dev-loop-trial` is a separate measurement mode that auto-answers both gates to measure agent convergence — never a mode for landing real changes.
-- **No domain knowledge in the loop.** `scripts/` and `.claude/` must stay generic. Anything app-specific belongs in `flywheel.toml` or an `engagements/<name>/` package's own analyzer (`[app].analyzer` is required — there is no generic fallback). All degrade gracefully when absent.
+- **No domain knowledge in the loop.** `scripts/` and `.claude/` must stay generic. Anything app-specific belongs in `flywheel.toml` or an `engagements/<name>/` package's own analyzer (`[app].analyzer` is required — there is no generic fallback).
 - **Every submission goes through `scripts/apply_edits.py`, never a hand-written diff.** The implementer returns structured `{file, old_string, new_string}` edits, not a diff — it never hand-computes a hunk header or line count, which is the actual cause of every malformed-patch failure this loop has observed. `apply_edits.py` runs the protected-path guard, then validates every edit's `old_string` against current content, then writes — atomically, in that fixed order; `.claude/settings.json` also denies `Bash(git apply:*)` directly so hand-crafting a diff isn't a shorter path either. Not an OS-level boundary — the orchestrator holds Edit/Write directly and could still evade it deliberately — but there is no longer a path that skips the guard by omission. See `SECURITY.md`.
 - **Two human gates + a protected evaluator.** The loop blocks at Gate 1 (approve the proposal) and Gate 2 (approve the exact tested patch after the app's `[app].evaluator` runs). The implementer may never edit paths in `[protected].paths` (held-out evaluator, gold, fixtures, `runs/`) — `check_protected_paths.py` enforces this and fails closed if no config resolves.
 - **Adapters are data.** An engagement grows mostly by adding declarative config the app reads (e.g. onboarding adapters), not agent-written code; new code is reserved for genuinely new behavior and is covered by tests + the evaluator.

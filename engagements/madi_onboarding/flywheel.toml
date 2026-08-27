@@ -6,7 +6,6 @@
 module = "engagements.madi_onboarding.app.main:app"
 base_url = "http://localhost:8000"
 usage_log = "usage_log.jsonl"                      # → engagements/madi_onboarding/usage_log.jsonl
-version_files = ["engagements/madi_onboarding/app/main.py"]
 # The held-out oracle the dev-loop runs at Gate 2 to score a proposed adapter.
 evaluator = "python engagements/madi_onboarding/evaluate.py"
 # The domain gap-ranker the dev-loop runs to build STEP 2's proposal signal

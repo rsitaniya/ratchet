@@ -40,7 +40,6 @@ dev = [
 [project.urls]
 Homepage = "https://github.com/rsitaniya/dev-flywheel"
 Repository = "https://github.com/rsitaniya/dev-flywheel"
-Changelog = "https://github.com/rsitaniya/dev-flywheel/blob/main/CHANGELOG.md"
 
 [tool.setuptools]
 # Importable packages: the engagement packages, so their scripts (evaluate.py,

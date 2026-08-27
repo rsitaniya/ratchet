@@ -32,7 +32,6 @@ EDITS:
 
 TEST_FILE: tests/test_[snake_case_feature_name].py
 
-CHANGELOG: [one-line summary, e.g. "Added POST /reports endpoint for bulk report creation"]
 ````
 
 ## Rules

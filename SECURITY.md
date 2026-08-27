@@ -1,43 +1,52 @@
 # Security model
 
-**Reader:** a reviewer deciding what the local benchmark harness enforces and what it does not.
+**Reader:** a reviewer deciding what the local benchmark harness enforces and where that enforcement ends.
 
-## Scope
+`dev-flywheel` protects the integrity of a reviewed local workflow. It is not a multi-tenant service. Do not expose it to untrusted callers without separate authentication, authorization, rate limits, secret handling, telemetry controls, and operational hardening.
 
-This is a local, single-operator development loop and benchmark harness. It is not a multi-tenant service and should not be exposed to untrusted callers without separate authentication, authorization, rate limiting, telemetry, and operational controls.
+## Security claim
 
-## Enforced workflow controls
+The documented implementer cannot read the answer key or write to the worktree. It returns structured edits. A guarded orchestrator validates those edits, runs tests and the evaluator, then waits for a human decision. The controls protect that workflow from accidental evaluator contamination and unreviewed mutation. They do not protect against an operator with broader local permissions.
 
-| Claim | Mechanism |
-|---|---|
-| The implementer cannot write directly. | It holds `Read, Grep, Glob` only — no Bash, no Edit, no Write — and returns structured `{file, old_string, new_string}` edits, never a diff. This is its only mutation path. |
-| Protected artifacts cannot be changed by a submitted edit. | `scripts/check_protected_paths.py` checks each edit's `file` path directly (no diff parsing — there is no diff) and fails closed if no `flywheel.toml` resolves. A rename, copy, or symlink write has no equivalent in the edit contract, so there is nothing to detect for any of them — the implementer cannot express those operations at all, not just none it has tried and been caught at. |
-| The guard cannot be skipped by omission. | `scripts/apply_edits.py` is the single entry point that runs the protected-path guard, then validates every edit's `old_string` against current file content, then writes — in that fixed order, atomically (one bad edit blocks the whole submission). `.claude/settings.json` also denies `Bash(git apply:*)` directly, so hand-crafting a diff isn't a shorter path either. |
-| Gold is not an implementer input. | Claude Code deny rules block the implementer's `Read`/`Grep` access to fixtures, gold files, and `runs/` (committed receipts — the converged answers to prior cycles). |
-| A tested patch needs an accountable decision. | Gate 1 approves scope; Gate 2 approves the exact tested patch after tests and evaluator output. |
-| A cycle cannot overwrite unrelated local work. | The orchestrator aborts on a dirty working tree. |
+## Threats, controls, and residual risk
 
-## Real-data test split and the score-delta channel
+| Threat or failure mode | Control | Residual risk |
+|---|---|---|
+| Implementer writes directly to the repository | The implementer holds `Read`, `Grep`, and `Glob` only. It has no Bash, Edit, or Write tool grant. | The orchestrator and a human may hold broader permissions. |
+| Submitted change modifies gold, fixtures, evaluator, engines, or receipts | `apply_edits.py` is the sole write entry point. It invokes the protected-path guard before any write and fails closed when no configuration resolves. | Protection is scoped to configured paths and the documented entry point. |
+| Edit applies to the wrong source state | Each `old_string` must occur exactly once before a write. The full edit list is atomic. | A correct exact match can still express poor engineering. |
+| Diff parser misses a rename, copy, or symlink trick | The implementer cannot express those operations. Its contract contains only file replacement edits. | This property depends on the implementer using the documented contract. |
+| Implementer reads held-out answers | Claude Code deny rules block its `Read`, `Grep`, and `Glob` access to fixtures, gold, and receipts. | Deny rules are tool grants, not filesystem permissions. |
+| A change passes HTTP tests while harming domain correctness | Gate 2 runs the configured evaluator and compares it with the pre-cycle baseline. | The evaluator only detects properties represented by its oracle. |
+| Local work is overwritten | The orchestrator aborts on a dirty worktree. | It cannot protect work created after the check or outside the repository. |
 
-Every dev cycle scores against synthetic fixtures the implementer can never read, but the loop *can* observe the evaluator's aggregate score-delta each cycle. Over enough cycles that is a probing channel: an agent could in principle hill-climb against repeated score feedback instead of solving the mapping problem, and each cycle's evaluator output could anchor the next cycle's proposal toward whatever the last score rewarded.
+## The score-feedback channel
 
-The real MaDI-Bench data (`flywheel.real.toml`, `data/madi/`, never committed) is the answer to that channel, not just more test coverage: it is scored **once**, offline, never during a loop cycle, and the fitted synthetic adapter cannot transfer to it (the real and synthetic forbes source columns share no names). A loop that had learned to fit the synthetic fixtures' score-delta signal gains nothing from that on a distribution it never received feedback against. `evaluate.py`'s `FLYWHEEL_EVAL_LOG` (set by `/dev-loop-trial`) makes evaluator-invocation frequency an observable, not an assumption — a trial that consulted the oracle an unusual number of times per cycle is visible in the log, not just in the final score.
+The synthetic development evaluator exposes aggregate results at every cycle. Repeated feedback can become a search signal. An agent could optimize the dev score without learning a rule that transfers.
 
-## Residual limits
+The real MaDI-Bench configuration addresses that risk with a separate source distribution, schema gold, and adapter directory. Its raw columns do not overlap with the synthetic source. The trial harness logs evaluator invocations, making oracle use observable. The separate trial is evidence against one form of overfitting. It does not eliminate overfitting risk or establish generalization beyond its measured task.
 
-- Claude Code deny rules are not filesystem permissions; changing tool grants changes the boundary. For the implementer subagent (no Bash) this closes the loophole entirely — a returned diff is its only route to the tree. For a Bash-holding session (the orchestrator, or a human), the deny rules are a strong deterrent, empirically also matching `Bash` commands that name a denied path as an argument (e.g. `cat` on a `runs/` file is refused) — but this is a heuristic over the command text, not a kernel-level permission, and a sufficiently indirect invocation could still evade it.
-- A writable adapter or normalizer can still be poor engineering. Aggregate evaluator output and human review limit, but do not eliminate, overfitting risk against the synthetic dev fixtures — this is exactly what the real-data test split above exists to bound.
-- `X-Usage-Source` and run IDs are caller-set. Assign provenance server-side in an exposed deployment.
-- Query parameters are recorded verbatim. Do not treat the local usage log as a secret-safe store.
-- Telemetry is append-only and read into memory. Rotate, bound, and harden it before high-volume use.
-- `/reconcile` is fixture-scale; production entity resolution needs blocking and resource limits.
-- `record_id_hash` in telemetry is a keyed HMAC (`RECORD_ID_HASH_KEY`), not a bare hash, so it resists dictionary/rainbow-table recovery from a guessable id space — but the app falls back to a fixed, non-secret dev key when the env var is unset. Set `RECORD_ID_HASH_KEY` in any real deployment.
+## Data and network boundaries
 
-## Robustness measures
-
-- Telemetry is fail-open: a logging failure does not turn a served request into a 500.
-- Source-system path values are validated and adapter paths must resolve under `adapters/`.
-- Batch and reconcile inputs are bounded.
+- Raw real MaDI-Bench data is downloaded locally and ignored by Git. See the [data license notice](engagements/madi_onboarding/DATA_LICENSE_NOTICE.md).
+- Usage telemetry is append-only. Query parameters are recorded verbatim. Treat the local usage log as non-secret.
+- `X-Usage-Source` and run IDs are caller-controlled. A deployed service must assign provenance server-side.
+- Telemetry is read into memory. Rotate, bound, and harden it before high-volume use.
 - The simulator rejects a URL join that leaves its configured origin.
+- `record_id_hash` uses a keyed HMAC. The fallback development key is not secret. Set `RECORD_ID_HASH_KEY` in any real deployment.
 
-Report a security-relevant issue through the repository’s GitHub issues. See [Delivery system architecture](docs/DELIVERY_SYSTEM.md) for the controls in context.
+## Operational limits
+
+- `/reconcile` is fixture-scale. A production entity-resolution system needs blocking, resource limits, monitoring, and recovery controls.
+- Telemetry failure is fail-open. A logging failure does not turn a served request into a 500.
+- Source-system path values are validated and adapter paths must resolve under the configured adapter directory.
+- Batch and reconciliation inputs are bounded locally. Those bounds are not capacity planning.
+
+## What this document does not claim
+
+- OS-level isolation of the evaluator or data.
+- Safe operation in a public or multi-tenant deployment.
+- Immunity from a malicious or privileged local operator.
+- A complete defense against poor adapters, weak oracles, or unsupported data volumes.
+
+The [delivery-system architecture](docs/DELIVERY_SYSTEM.md) explains how these controls fit the loop. Report a security-relevant issue through the repository’s GitHub issues.

@@ -113,8 +113,8 @@ For `cycle = 1..5`, or until convergence:
    (the only real-data metric that is meaningful here — `value_recall` and
    `fully_correct_rate` are `null` for the real split; see `evaluate.py`).
    If converged, stop the trial early and record `cycles_used`.
-9. Tag everything this trial writes — the CHANGELOG line, any receipt files —
-   with `"gates": "auto"` so nothing from a trial can be read as a human
+9. Tag every receipt or trial artifact this run writes with `"gates": "auto"`
+   so nothing from a trial can be read as a human
    approval.
 
 ### TRIAL STEP 3 — Record and revert

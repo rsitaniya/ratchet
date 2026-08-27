@@ -1,94 +1,73 @@
 # dev-flywheel
 
-**A controlled delivery loop for turning operational gaps into evaluated changes.**
+**A controlled delivery loop for agent-assisted integration work.**
 
 [![CI](https://github.com/rsitaniya/dev-flywheel/actions/workflows/ci.yml/badge.svg)](https://github.com/rsitaniya/dev-flywheel/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 
-The reference engagement onboards a new partner data source. The loop reads structured integration failures, proposes a bounded adapter change, runs an evaluator whose gold labels and scorer are protected from the implementer subagent, and requires approval before the tested patch lands.
+A request can succeed while the integration is wrong. A source can be mapped correctly while its records still fail to match the same entities elsewhere. `dev-flywheel` turns those observed gaps into scoped, evaluated changes with two human approval gates.
 
-It is a local benchmark harness, not an autonomous deployment product. The onboarding engagement below is both the primary evidence and the only bundled example.
+The reference engagement is a partner-data API. It demonstrates one delivery loop across two decisions:
 
-## Reference engagement: partner-data onboarding
+- **Onboarding:** map a new source into a canonical company schema without regressing a source that already works.
+- **Reconciliation:** match entities across sources, then resolve the attribute conflicts exposed by those matches.
 
-**Problem:** map a new partner’s inconsistent company records into a canonical schema without breaking a source that already works.
+The implementer cannot write directly. It returns structured edits. The orchestrator checks their paths and exact prior content before it writes, then runs tests and an evaluator whose gold, fixtures, and core scoring paths are protected.
 
-**Definition of done:** improve field mapping and normalized-value recall against held-out gold, retain the existing source’s score, and keep the evaluator, gold, fixtures, and core scoring machinery outside the implementer’s write path.
+This is a local, single-operator benchmark harness. It is not an autonomous deployment product or a claim of production customer impact.
 
-![Two approved adapter cycles take a new partner source from zero schema and value recall to a fully correct result; all values are traceable to committed evaluator receipts.](docs/madi-onboarding-demo.gif)
+![Two reviewed onboarding cycles take a new partner source from zero mapping and value recall to a fully correct result. Every reported state has a committed evaluator receipt.](docs/madi-onboarding-demo.gif)
 
-| Metric: new `forbes` source | Baseline | Cycle 1 | Cycle 2 |
-|---|---:|---:|---:|
-| Schema-mapping F1 | [0.00](engagements/madi_onboarding/runs/forbes/00_baseline.evaluate.json) | [0.55](engagements/madi_onboarding/runs/forbes/01_cycle1.evaluate.json) | [1.00](engagements/madi_onboarding/runs/forbes/02_cycle2.evaluate.json) |
-| Value recall | [0.00](engagements/madi_onboarding/runs/forbes/00_baseline.evaluate.json) | [0.375](engagements/madi_onboarding/runs/forbes/01_cycle1.evaluate.json) | [1.00](engagements/madi_onboarding/runs/forbes/02_cycle2.evaluate.json) |
-| Fully-correct rate | [0%](engagements/madi_onboarding/runs/forbes/00_baseline.evaluate.json) | [0%](engagements/madi_onboarding/runs/forbes/01_cycle1.evaluate.json) | [100%](engagements/madi_onboarding/runs/forbes/02_cycle2.evaluate.json) |
-| Existing `dbpedia` source regressed | — | [No](engagements/madi_onboarding/runs/forbes/01_cycle1.evaluate.json) | [No](engagements/madi_onboarding/runs/forbes/02_cycle2.evaluate.json) |
+## Evidence at a glance
 
-The artifact trail contains the baseline, ranked gaps, adapter patch, patch hash, and evaluator output for every cycle: [run receipts](engagements/madi_onboarding/runs/MADI_EXAMPLE.md). Read the [case study](engagements/madi_onboarding/CASE_STUDY.md) for the context, decisions, and limits.
+| Question | Evidence | What it establishes |
+|---|---|---|
+| Can a new source be onboarded without breaking an existing one? | `forbes` schema F1: `0.00 → 1.00`; value recall: `0.00 → 1.00`; no `dbpedia` regression across two recorded cycles. | The reference onboarding loop can improve a bounded adapter against held-out synthetic gold. |
+| Can the same loop handle a different kind of correctness? | Entity-matching F1: `0.00 → 1.00`; fusion accuracy: `0.875 → 1.00`; no source regression across two recorded cycles. | The same controls work when the change surface moves from field mapping to matching and fusion rules. |
+| Does the agent converge on a separate real-data mapping task? | Five auto-gated trials on real MaDI-Bench Forbes data converged in one cycle each to schema F1 `1.00`. Two first responses had malformed diffs, leading to the current structured-edit handoff. | On this low-ambiguity mapping task, the measured implementer converged reliably and exposed a concrete delivery-mechanics weakness. |
 
-## What the system demonstrates
+The [receipt index](engagements/madi_onboarding/runs/MADI_EXAMPLE.md) contains every synthetic-cycle input, gap report, edit, hash, and evaluator output. The [trial report](engagements/madi_onboarding/runs/trials/README.md) contains the real-data trial protocol, failures, and limits.
 
-| Delivery concern | Mechanism in this repository |
-|---|---|
-| Turn observed failure into a scoped engineering decision | Endpoint telemetry and engagement-specific gap analysis rank failed intent and affected records. |
-| Work safely with agent-generated changes | The read-only implementer subagent returns structured edits, never a diff; the orchestrator validates protected paths and every edit's exact match (via `apply_edits.py`, the single guarded entry point) before it writes. |
-| Measure more than request success | An optional, protected evaluator scores domain correctness and regression against held-out truth. |
-| Answer "did it overfit the score, not the problem?" | A real-data test split (MaDI-Bench's own CSVs and gold) is scored once, offline, never during a cycle — a distribution the fitted dev-fixture adapter cannot transfer to. |
-| Generalize a one-off solution | The simulator, analyzer contract, controls, and configuration seam are generic; adapters, rules, and each engagement's own analyzer are engagement data. Two configs (dev, real-data test) already select two different datasets and oracles against the same loop. |
-| Preserve human accountability | Gate 1 approves scope. Gate 2 approves the exact tested patch. |
+## The engineering decisions
 
-## Run it locally
+| Decision | Why it exists | Evidence and limit |
+|---|---|---|
+| **Signal before change** | A telemetry analyzer ranks concrete integration failures before an agent proposes work. | The two reference engagements start from replayed traffic and gap reports. An analyzer still needs domain knowledge. |
+| **Structured edits, not model-authored diffs** | Two of five early trial attempts produced malformed diff bookkeeping. Exact `old_string` validation gives the model a simpler, checkable handoff. | `apply_edits.py` applies all edits atomically or none. The orchestrator remains a trusted writer. |
+| **Independent evaluation** | HTTP success cannot establish schema, value, matching, or fusion correctness. | Gold, fixtures, scorer, engines, and receipts sit outside the implementer’s tool grants and writable surface. Tool grants are not OS permissions. |
+| **Separate real-data trial** | A fitted dev-fixture adapter may overfit aggregate score feedback. | The real MaDI configuration uses a separate adapter surface and oracle. The measured task is low-ambiguity and does not establish general agent reasoning ability. |
+| **Two human gates** | Scope and final acceptance are accountable decisions. | Gate 1 approves the proposal. Gate 2 approves the exact tested result. The loop never merges or deploys itself. |
 
-Requires Python 3.11–3.13 and [uv](https://pypi.org/project/uv/) (`pip install uv`). `uv sync`
-installs the locked dependency set, including the project itself in editable mode — it is the
-CI path and makes the engagement package importable.
+## Read the work at the right depth
+
+- [Case study](engagements/madi_onboarding/CASE_STUDY.md) — the two delivery failures, the changes, the results, and the real-data trial.
+- [Delivery-system architecture](docs/DELIVERY_SYSTEM.md) — contracts, decision boundaries, and implementation design.
+- [Security model](SECURITY.md) — workflow controls, adversarial cases, and residual risks.
+- [Run receipts](engagements/madi_onboarding/runs/MADI_EXAMPLE.md) — raw reproducible evidence for onboarding and reconciliation.
+- [Real-data baseline](engagements/madi_onboarding/runs/real_forbes/README.md) and [convergence trials](engagements/madi_onboarding/runs/trials/README.md) — separate test-split evidence.
+- [Local runbook](SETUP.md) — install and reproduce the reference engagement.
+- [Adaptation guide](docs/ADAPTING.md) — configure the generic loop for another FastAPI API.
+- [Data license notice](engagements/madi_onboarding/DATA_LICENSE_NOTICE.md) — boundaries for the external benchmark data.
+
+## Run the reference engagement
+
+Requires Python 3.11–3.13 and [uv](https://pypi.org/project/uv/).
 
 ```bash
 uv sync --all-extras --locked
-export FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.toml
-export USAGE_LOG_PATH=$(uv run python scripts/flywheel_config.py --get app.usage_log)
-uv run uvicorn "$(uv run python scripts/flywheel_config.py --get app.module)" --reload
+uv run pytest tests/ -q
+uv run ruff check .
 ```
 
-In a second terminal, build the replay traffic and inspect the resulting signal:
+To replay the onboarding baseline, follow the two-terminal procedure in [SETUP.md](SETUP.md). The shipped `forbes` adapter is intentionally empty. The recorded successful states are receipts, so a reader can begin from the same baseline.
 
-```bash
-uv run python engagements/madi_onboarding/to_replay.py --source forbes
-uv run python scripts/simulate.py --run-id local-baseline
-uv run python engagements/madi_onboarding/analyze_integration.py "$USAGE_LOG_PATH" --source forbes --run-id local-baseline
-```
+## Boundaries
 
-If you use Claude Code, `/dev-loop` runs one proposed-change cycle with the two approval gates. The complete local procedure is in [SETUP.md](SETUP.md).
-
-## How the loop works
-
-```mermaid
-flowchart LR
-    A[Schema or replay] --> B[Simulator]
-    B --> C[Telemetry]
-    C --> D[Analyzer]
-    D --> E[Orchestrator proposal]
-    E --> F{Gate 1}
-    F --> G[Read-only diff]
-    G --> H[Path checks + tests + evaluator]
-    H --> I{Gate 2}
-    I --> J[Schema-visible change]
-    J --> B
-```
-
-The architectural contracts, control boundaries, test strategy, and non-goals are in [Delivery system architecture](docs/DELIVERY_SYSTEM.md).
-
-## Documentation map
-
-- [Reference engagement](engagements/madi_onboarding/CASE_STUDY.md) — problem, constraints, decisions, outcomes, and limits.
-- [Run receipts](engagements/madi_onboarding/runs/MADI_EXAMPLE.md) — raw evidence for the onboarding metrics.
-- [Delivery system architecture](docs/DELIVERY_SYSTEM.md) — reusable platform design, contracts, controls, and test strategy.
-- [Local runbook](SETUP.md) — install, start, run, and troubleshoot.
-- [Adaptation guide](docs/ADAPTING.md) — point the generic loop at another FastAPI API.
-- [Security model](SECURITY.md) — threat model, enforced boundaries, and residual risks.
-- [Change history](CHANGELOG.md) — append-only release history.
-- [Data license notice](engagements/madi_onboarding/DATA_LICENSE_NOTICE.md) — MaDI-Bench data terms and reproducibility boundaries.
+- The synthetic fixtures contain 6–7 records per stage. They show reproducibility, not scale.
+- The real-data trial measures one source mapping. It does not establish customer impact, production throughput, tenant isolation, or broad agent capability.
+- `/reconcile` is fixture-scale. Production entity resolution needs blocking, resource limits, monitoring, and recovery controls.
+- The local permission model constrains the documented implementer. It does not create an operating-system security boundary.
 
 ## License
 

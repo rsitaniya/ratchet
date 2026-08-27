@@ -1,32 +1,24 @@
-# Case study: partner-data onboarding
+# Case study: from accepted requests to correct company data
 
-**Reader:** a reviewer assessing applied-AI delivery judgment, evaluation design, and technical execution.
+**Reader:** a technical reviewer assessing applied-AI delivery judgment, evaluation design, and implementation depth.
 
-## Context
+## The problem
 
-A partner-data API accepts company records from sources with different field names and formats. The target schema requires normalized `name`, `founded`, and `country`; complete records also include city, industry, assets, revenue, and key people. `dbpedia` is already integrated. `forbes` arrives with renamed fields, string years, country names, and currency-formatted values.
+The reference API accepts company records from several partner sources. Its canonical schema expects normalized `name`, `founded`, and `country`. Complete records also carry city, industry, assets, revenue, and key people.
 
-This is a reproducible benchmark using this repository's synthetic fixtures — not a claim of production customer impact. Those synthetic fixtures are the **dev** split: fast, deterministic, scored every cycle at Gate 2. The same loop also runs against the real MaDI-Bench Companies task as a **test** split (`flywheel.real.toml`, `data/madi/`): `download_data.py` fetches the pinned, checksum-verified CSVs, `csv_to_ingest.py` and `prepare_real_eval.py` convert them and the benchmark's own schema-matching gold into the shape `evaluate.py` already reads, and it is scored **once**, offline, never during a loop cycle — see [Extension: the real-data test split](#extension-the-real-data-test-split) below. See [data terms](DATA_LICENSE_NOTICE.md) — the data's own license is not stated by its authors.
+`dbpedia` already works. A new `forbes` source arrives with different field names, string years, country names, and currency-formatted values. The API can accept every request while producing unusable records. The task is to improve the new source without damaging the working one.
 
-## Objective and constraints
+That solved only the first problem. Once sources are onboarded, the system must decide which records describe the same company and how to resolve attributes that disagree. The engagement uses one delivery loop for both decisions.
 
-| Objective | Constraint |
-|---|---|
-| Improve the new source’s mapping and normalized values. | The implementer subagent cannot read gold, fixtures, or `runs/` receipts through its Claude Code tool grants (`Read, Grep, Glob` only, no Bash). |
-| Keep the seed source correct. | Gate 2 compares evaluator output with a pre-cycle baseline. |
-| Make each decision auditable. | A cycle produces ranked gaps, an adapter diff, a hash, and evaluator JSON. |
-| Keep ordinary changes narrow. | Adapters and rules are writable; evaluator, gold, fixtures, and engines are protected. |
+## The operating boundary
 
-## Delivery approach
+The loop begins with replayed traffic and structured integration failures. An engagement-specific analyzer ranks the gaps. A human selects a bounded proposal. The implementer returns structured edits. The orchestrator validates every edit, runs tests and the evaluator, then asks a human to approve the exact tested change.
 
-1. Replay `forbes` records through `POST /ingest`.
-2. Rank structured `UNMAPPED_FIELD`, format, and required-field gaps by affected records.
-3. Approve one bounded adapter change.
-4. Validate the diff, run the evaluator against held-out truth, and approve or revert the tested result.
+The implementer cannot read or write the evaluator, gold labels, fixtures, matching engine, fusion engine, or prior receipts through its Claude Code grants. It can change adapters and rules. This is a workflow control for a local harness. It is not an operating-system security boundary.
 
-The first cycle maps required fields and reaches 6/6 integrated records. The second maps optional attributes, adds the semantic rename `sales → revenue`, and normalizes money and country values.
+## First delivery cycle: onboarding `forbes`
 
-## Measured outcome
+The synthetic dev split contains six `forbes` records and a working `dbpedia` source. The empty adapter is the baseline. Cycle 1 maps required fields. Cycle 2 maps optional attributes, adds `sales → revenue`, and normalizes country and money values.
 
 | `forbes` metric | Baseline | Cycle 1 | Cycle 2 |
 |---|---:|---:|---:|
@@ -36,56 +28,52 @@ The first cycle maps required fields and reaches 6/6 integrated records. The sec
 | Fully-correct rate | 0% | 0% | 100% |
 | `dbpedia` regression | — | none | none |
 
-Every result is a [committed receipt](runs/MADI_EXAMPLE.md), not a dashboard claim.
+The [onboarding receipts](runs/MADI_EXAMPLE.md#forbes-onboarding-schema-matching--value-normalization) link the baseline, gap reports, adapter snapshots, change artifacts, hashes, and literal evaluator output. The repository ships the empty adapter so a reader can begin from the same state. The receipts preserve the converged states.
 
-## Extension: reconciliation
+## Second delivery cycle: reconciliation
 
-The same pattern covers cross-source entity matching and data fusion, with its own two-cycle
-receipt trail. Cycle 1 replaces the seed's exact-name match with fuzzy matching, which alone
-recovers every gold pair. That match is what makes fusion conflicts visible in live telemetry at
-all — matching.py's assignment is exclusive (one entity, not one-to-many), so a matched pair's
-attribute disagreements only show up once matching works. Cycle 2 reads that live signal and adds
-one per-attribute fusion override.
+Correct ingestion exposes a different failure. The benchmark contains five gold entity pairs across sources. The seed matching rules find none. Without matched pairs, live telemetry has no fusion conflicts to report.
+
+The evaluator can still score fusion against gold-matched clusters. Its baseline fusion accuracy is `0.875`. That is a signal for the evaluator, not a live diagnosis the analyzer can act on yet. Matching must come first.
+
+Cycle 1 replaces exact-name matching with fuzzy, exclusive matching. Exclusive assignment prevents one record from appearing in more than one matched pair. This reaches F1 `1.00` and makes fusion conflicts visible in live telemetry. Cycle 2 uses that signal to add one per-attribute fusion rule.
 
 | `reconcile` metric | Baseline | Cycle 1 | Cycle 2 |
 |---|---:|---:|---:|
-| Entity-matching F1 | [0.00](runs/reconcile/00_baseline.evaluate.json) | [1.00](runs/reconcile/01_cycle1.evaluate.json) | [1.00](runs/reconcile/02_cycle2.evaluate.json) |
-| Fusion accuracy | [0.875](runs/reconcile/00_baseline.evaluate.json) | [0.875](runs/reconcile/01_cycle1.evaluate.json) | [1.00](runs/reconcile/02_cycle2.evaluate.json) |
+| Entity-matching F1 | 0.00 | 1.00 | 1.00 |
+| Fusion accuracy | 0.875 | 0.875 | 1.00 |
 | `dbpedia`/`forbes` regression | — | none | none |
 
-The matcher, fusion engine, fixtures, and oracle are protected; `matching_rules.toml` and
-`fusion_rules.toml` are the change surface. Receipts: [runs/reconcile](runs/reconcile/).
+The [reconciliation receipts](runs/MADI_EXAMPLE.md#reconcile-entity-matching--data-fusion) show why the cycles occur in that order. They also show the narrow change surface: matching rules in cycle 1, fusion rules in cycle 2.
 
-## Extension: the real-data test split
+## A separate real-data trial
 
-The synthetic fixtures above are the loop's **dev** split — fast, deterministic, scored every
-cycle. MaDI-Bench's own forbes/dbpedia/fullcontact CSVs (2000/10085/1931 records) and its own
-`sm_mapping_gold.json` are the **test** split, scored once, offline, selected by
-`FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.real.toml` against a separate
-`adapters_real/` write surface. Real forbes columns (`forbes_url, company, url, region,
-business_segment, asset_value, sales_figure`) share nothing with the synthetic ones, so this is a
-genuine held-out distribution, not a subsample: the synthetic adapter cannot transfer. Only the
-schema-matching gold is pinned for the real benchmark, so `value_recall` and `fully_correct_rate`
-report `null` there, never `0.0` — see `evaluate.py`.
+The synthetic dev split makes every cycle fast and reproducible. It cannot answer whether a fitted adapter transfers to a source it has not seen. The real MaDI-Bench Companies split provides that separate task.
 
-| `forbes` (real, 2000 records) | Baseline |
-|---|---:|
-| Schema-mapping F1 | [0.00](runs/real_forbes/00_baseline.evaluate.json) |
-| Integrated rate | [0.0%](runs/real_forbes/00_baseline.evaluate.json) |
-| Value recall / fully-correct rate | null (no value gold pinned) |
+The real `forbes` export has 2,000 records and seven raw fields with no names shared with the synthetic fixture. Its schema-mapping gold is separate. Value gold is unavailable, so value recall and fully-correct rate remain `null`; the meaningful metric is schema-mapping F1.
 
-This is the same empty-adapter starting point as the synthetic baseline above — not yet a
-converged result. Measuring how reliably the agent converges it (cycles to converge, failure
-modes, across repeated runs) is `/dev-loop-trial`'s job; see `runs/trials/README.md` once trials
-have been run.
+Five auto-gated trials started from the empty real-data adapter. Every trial converged in one cycle to schema F1 `1.00`, with no regression and two evaluator invocations per trial. The [trial report](runs/trials/README.md) records the full protocol and each result.
+
+The trial also found a delivery-mechanics failure. Two of five first implementer responses had malformed unified diffs. Their mapping intent was correct. Their hunk bookkeeping was not. The loop now uses structured `{file, old_string, new_string}` edits and `apply_edits.py` validates every exact prior string before any write occurs. One bad edit rejects the whole submission.
+
+The real-data trial is a bounded result. The source mapping has low ambiguity. Five successes do not establish general agent reasoning ability, broad reliability, or production readiness.
+
+## What this engagement demonstrates
+
+- An integration loop can work from domain failures instead of an open-ended prompt.
+- Independent evaluation can cover schema mapping, normalized values, entity matching, fusion, and source regression.
+- A control pattern can carry across different change surfaces: adapters, matching rules, and fusion rules.
+- Measured agent behavior can change the system design. The structured-edit contract came from observed diff failures.
+- A separate data split can expose a synthetic-fixture result that fails to transfer.
 
 ## Limits
 
-- Fixtures contain 6–7 records per stage; the results establish reproducibility, not scale or commercial impact.
-- The matching implementation is intentionally fixture-scale; a production implementation needs blocking and operational limits appropriate to its data volume.
-- “Correct” means agreement with benchmark gold. It does not substitute for user adoption, latency, or business-value measurement.
-- Claude Code deny rules block this repo's own implementer subagent from reading fixtures, gold, and `runs/` receipts at the tool layer; that is not an OS-level filesystem permission, and changing tool grants changes the boundary.
+- Synthetic stages contain 6–7 records. They establish reproducibility, not scale or commercial impact.
+- The real-data trial measures one low-ambiguity mapping source. It does not measure customer value or general agent capability.
+- The matching implementation is fixture-scale. Production entity resolution needs blocking, operational limits, monitoring, and recovery controls.
+- “Correct” means agreement with the available benchmark gold. It does not measure adoption, latency, or business value.
+- Claude Code deny rules enforce the documented implementer’s tool boundary. A user or orchestrator with broader grants can change that boundary.
 
-## Reproduce
+## Inspect or reproduce
 
-Follow the [local runbook](../../SETUP.md), then inspect the [receipt index](runs/MADI_EXAMPLE.md). The baseline adapter remains empty by design so the documented cycles start from the same zero state.
+Start with the [local runbook](../../SETUP.md). Read the [receipt index](runs/MADI_EXAMPLE.md) for the synthetic cycles, the [real-data baseline](runs/real_forbes/README.md) for the separate split, and the [trial report](runs/trials/README.md) for the convergence measurement.

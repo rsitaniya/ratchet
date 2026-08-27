@@ -45,7 +45,6 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         # needs to set these.
         "target_schema": "",
         "adapters_dir": "",
-        "version_files": [],
         # Optional command the dev-loop runs at Gate 2 to score a proposed patch
         # against held-out truth. Empty for apps without an evaluator.
         "evaluator": "",

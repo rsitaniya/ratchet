@@ -1,36 +1,23 @@
-# real_forbes — the test split's baseline receipt
+# Real Forbes baseline
 
-Same mechanism as `runs/forbes/`, run against real data instead of the synthetic
-fixtures: `flywheel.real.toml` points the app at MaDI-Bench's own forbes CSV
-(2000 records, `data/madi/`) and at `adapters_real/forbes.toml`, and the evaluator
-scores against `data/madi/gold_mapping.json` (MaDI's own `sm_mapping_gold.json`,
-filtered to positive correspondences) — never the synthetic gold.
+**Purpose:** establish the empty-adapter baseline for the separate real MaDI-Bench source distribution.
 
-Real forbes columns (`forbes_url, company, url, region, business_segment,
-asset_value, sales_figure`) share nothing with the synthetic forbes adapter, so
-this is a genuine held-out distribution, not a subsample: the synthetic adapter
-cannot transfer here.
+`flywheel.real.toml` selects MaDI-Bench’s 2,000-record Forbes CSV, its schema-mapping gold, and `adapters_real/forbes.toml`. The real raw columns share no names with the synthetic Forbes fixture. This makes the source a separate mapping task rather than a subsample of the development data.
 
-Only the schema-matching gold is pinned for the real benchmark — no normalized
-value gold — so `value_recall` and `fully_correct_rate` report `null` here, not
-`0.0` (`0.0` would misrepresent "unmeasured" as "totally wrong"). This is the
-test split: scored once here to establish the baseline, not scored on every dev
-cycle the way `runs/forbes/` is.
+Only schema-mapping gold is available. `value_recall` and `fully_correct_rate` are `null`, which means unmeasured. It does not mean zero quality.
 
-## 00_baseline
+## Baseline
 
-- `00_baseline.adapter.toml` — the starting adapter: no field mappings, same
-  shape as `adapters/forbes.toml`'s synthetic counterpart.
-- `00_baseline.gap_report.txt` — 300 real forbes records replayed through
-  `POST /ingest` (bounded telemetry sample; the evaluator scores all 2000
-  records offline regardless of how many were replayed).
-- `00_baseline.evaluate.json` — `evaluate.py --fixtures data/madi --adapters
-  adapters_real --sources forbes` against all 2000 real records:
-  `schema_f1=0.0`, `integrated_rate=0.0`, `value_recall`/`fully_correct_rate`
-  `null` — the expected starting point for an empty adapter.
+| Metric | Result |
+|---|---:|
+| Schema-mapping F1 | 0.0 |
+| Integrated rate | 0.0 |
+| Value recall | null |
+| Fully-correct rate | null |
 
-No diff yet: this is the pre-cycle baseline, not a converged cycle. Phase 3's
-trial runs start from exactly this adapter and this baseline.
+The baseline adapter has no field mappings. `00_baseline.gap_report.txt` replays 300 records through `POST /ingest`. `00_baseline.evaluate.json` scores all 2,000 source records offline.
+
+The baseline is a starting point, not a converged delivery result. See the [convergence trials](../trials/README.md) for the measured 5-run result and its limits.
 
 ## Reproduce
 

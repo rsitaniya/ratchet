@@ -1,122 +1,66 @@
-# Agent convergence trials — real forbes, empty adapter
+# Real-data convergence trials
 
-`"gates": "auto"` — every result below came from `.claude/skills/dev-loop-trial/`,
-which auto-answers both human gates. None of this is an approved change; the
-tree was reverted to the committed empty `adapters_real/forbes.toml` baseline
-after every trial. This is a measurement of the agent, not a receipt of a
-shipped cycle (compare `runs/real_forbes/00_baseline` for that).
+**Question:** starting from an empty adapter, how did the measured implementer perform on the real MaDI-Bench Forbes mapping task?
 
-N=5, cycle cap 5 per trial, target `flywheel.real.toml` /
-`adapters_real/forbes.toml`, starting from its committed empty baseline
-(`source = "forbes"`, empty `[fields]`). Each trial: replay 300 of the 2000
-real forbes records, run the analyzer, take the top-ranked gap-report proposal
-(auto Gate 1), invoke the `implementer` subagent, apply via
-`scripts/apply_patch.py`, run the full test suite, evaluate with `--baseline`,
-auto Gate 2 (keep iff tests pass and no regression), check convergence
-(`schema_f1 == 1.0` — the only real-data metric that's meaningful, since no
-value gold is pinned).
+These are measurement runs. Both gates were auto-answered, every run started from the committed empty `adapters_real/forbes.toml`, and the tree was reverted afterwards. They are not human-approved delivery cycles.
+
+## Protocol
+
+- **Runs:** 5
+- **Cycle cap:** 5 per run
+- **Configuration:** `flywheel.real.toml`
+- **Traffic:** 300 replayed records from the 2,000-record real Forbes source
+- **Evaluation:** schema-mapping F1 against the real source’s separate gold; the evaluator scores all 2,000 records
+- **Convergence condition:** `schema_f1 == 1.0`
+
+`value_recall` and `fully_correct_rate` are `null` because the real benchmark provides no value gold. `integrated_rate` remains `0.0`: the source has no `founded` or `city` data, so a complete canonical record is impossible regardless of adapter quality.
 
 ## Result
 
-**5/5 trials converged, all in cycle 1.** No trial needed a second cycle.
+**All 5 trials converged in cycle 1.** Each ended at schema-mapping F1 `1.0`, with no regression and two evaluator invocations.
 
-| Trial | Converged | Cycles used | Final schema_f1 | Regression | Protected-path rejections | Evaluator invocations | Diff issues |
-|---|---|---|---|---|---|---|---|
-| 1 | Yes | 1 | 1.0 | No | 0 | 2 | 1 malformed hunk header (off-by-one count only, content correct) — repaired directly |
-| 2 | Yes | 1 | 1.0 | No | 0 | 2 | none |
-| 3 | Yes | 1 | 1.0 | No | 0 | 2 | none |
-| 4 | Yes | 1 | 1.0 | No | 0 | 2 | 1 malformed hunk (wrong context, not just a count) — required a full implementer resubmission |
-| 5 | Yes | 1 | 1.0 | No | 0 | 2 | none |
+| Trial | Cycles | Schema F1 | Regression | Evaluator calls | First response issue |
+|---|---:|---:|---|---:|---|
+| 1 | 1 | 1.0 | none | 2 | malformed unified-diff hunk count |
+| 2 | 1 | 1.0 | none | 2 | none |
+| 3 | 1 | 1.0 | none | 2 | none |
+| 4 | 1 | 1.0 | none | 2 | malformed unified-diff context |
+| 5 | 1 | 1.0 | none | 2 | none |
 
-**Convergence rate: 100% (5/5).** **Cycles-to-converge: 1 in every trial** (no
-distribution to speak of at cap 5 — every trial converged on its first attempt).
-**Regression-blocked: 0/5.** **Protected-path rejections: 0/5** — no trial's
-implementer ever attempted to touch a protected path. **Evaluator invocations:
-2 per trial** (one baseline snapshot, one `--baseline` comparison) in every
-trial — no sign of excessive score-delta probing at this scale.
+All trials independently selected the same mapping:
 
-## What every trial actually did
-
-All 5 trials independently converged on the same semantic mapping, with no
-gold ever read:
-
-```
-forbes_url    -> id        (identity)
-company       -> name       (identity)
-region        -> country    (country_to_iso)
-business_segment -> industry (identity)
-asset_value   -> assets     (currency_to_usd)
-sales_figure  -> revenue    (currency_to_usd)
+```text
+forbes_url       -> id        (identity)
+company          -> name      (identity)
+region           -> country   (country_to_iso)
+business_segment -> industry  (identity)
+asset_value      -> assets    (currency_to_usd)
+sales_figure     -> revenue   (currency_to_usd)
 ```
 
-`url` (a duplicate of `forbes_url`) and `founded`/`city` (no source data at
-all for either) were correctly left unmapped in every trial — no implementer
-run tried to invent a mapping to force integration.
+`url` duplicates `forbes_url`. The source does not provide `founded` or `city`. Every trial left those fields unmapped rather than inventing a mapping.
 
-## Failure modes and limits
+## What the trial changed
 
-- **`integrated_rate` stayed 0.0 in every trial — this is not an agent
-  failure.** The real forbes source has no data for `founded` or `city`, so
-  full integration is architecturally impossible regardless of adapter
-  quality. `schema_f1` (correctness of the mapping itself) is the only
-  meaningful convergence signal for this source; `value_recall` and
-  `fully_correct_rate` are `null` throughout since no value gold is pinned.
-- **2/5 trials (40%) produced a malformed diff on the first attempt** — a
-  hunk `@@` header whose line count (trial 1) or context (trial 4) didn't
-  match the real file. This is a diff-mechanics reliability issue, not a
-  mapping-quality one: both trials' *content* was correct once applied.
-  Trial 1's defect was a pure count typo, corrected in place; trial 4's
-  context was substantively wrong and needed a full resubmission cycle. That
-  inconsistency in how the two were handled is a limitation of this specific
-  run, not the skill's design — a stricter protocol would always resubmit,
-  never hand-fix, for a cleaner signal on diff-authoring reliability alone.
-- **The task turned out to be low-ambiguity.** Real forbes' 7 raw column
-  names map onto the 8 target attributes with little semantic overlap to
-  resolve (only `forbes_url` vs `url` were ever candidates for the same
-  target). All 5 trials reaching the identical mapping says more about this
-  task's low ambiguity than about the agent's ability to disambiguate under
-  genuine uncertainty — a harder mapping task (more plausible-but-wrong
-  candidates per target attribute) would be a better test of that.
-- **`data/madi/**` (raw real source records) is not `Read`/`Grep`-denied at
-  the tool level**, unlike `**/fixtures/**` and `**/gold_*.json` — only
-  write-protected via `[protected].paths`. The implementer needs to see raw
-  values to pick normalizers, so this is intended, but it is a looser
-  boundary than the synthetic dev split's, and one implementer run flagged
-  it unprompted. Worth a deliberate decision (extend the tool-level deny to
-  match fixtures/**, or document the asymmetry explicitly) rather than
-  leaving it implicit.
+The mapping result was reliable in this run. The diff mechanics were not. Two of five first responses contained a malformed unified diff. The old workflow asked a read-only implementer to calculate diff hunk headers it could not verify with Bash.
+
+The current loop no longer accepts model-authored diffs. The implementer returns structured `{file, old_string, new_string}` edits. `scripts/apply_edits.py` validates every target and exact prior string, then applies the full submission atomically. The trial remains evidence of the old failure. The structured-edit contract is the design response.
+
+## Limits
+
+- The source mapping has low ambiguity. Seven raw columns map to distinct target concepts with few plausible alternatives.
+- Five successes do not establish general agent reasoning ability or broad reliability.
+- This is an auto-gated measurement. It does not demonstrate human approval quality.
+- The raw real records are writable-protected but intentionally readable by the implementer, which needs their values to select normalizers. That is a looser tool boundary than the synthetic fixture split.
+- Two evaluator calls per trial are reassuring at this scale. They do not prove that score-feedback probing cannot occur in a harder or longer run.
 
 ## Reproduce
 
 ```bash
 export FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.real.toml
-# preconditions: download_data.py, csv_to_ingest.py --source forbes, prepare_real_eval.py
+uv run python engagements/madi_onboarding/download_data.py
+uv run python engagements/madi_onboarding/csv_to_ingest.py --source forbes
+uv run python engagements/madi_onboarding/prepare_real_eval.py
 ```
-Then run `.claude/skills/dev-loop-trial/` (`Skill({skill: "dev-loop-trial"})`) with N and a cycle cap.
 
-## Honest read: what this run does and doesn't show
-
-**Diff-authoring reliability, not mapping quality, is the weak point.** 2 of 5
-trials (40%) produced a malformed diff on the implementer's first attempt —
-trial 1 had an off-by-one hunk-header count (patched in place), trial 4 had
-wrong hunk context (required a full resubmission from the implementer). Both
-were handled, but inconsistently: this run repaired one and made the other
-resubmit, which is not a fixed protocol and shouldn't be read as one. A
-production version of this loop should always resubmit on a malformed diff,
-never hand-repair, so the measurement stays honest about what the agent
-actually produced.
-
-**5/5 identical convergence reflects task ease, not disambiguation skill.**
-Real forbes has 7 raw columns with little semantic overlap against the target
-schema (no two columns plausibly map to the same attribute), so every trial
-converging on the same mapping is close to the only correct answer being
-findable at all — it is not evidence the agent resolves genuine ambiguity
-well. A harder source (renamed near-duplicates, unit ambiguity, multiple
-plausible targets for one column) is a better test of that, and this run
-doesn't substitute for one.
-
-Read together: schema-mapping *correctness* was reliable here (5/5, 0
-regressions, 0 protected-path attempts), but the *mechanical* diff-production
-step was not (2/5 malformed), and the *difficulty* of what was being mapped
-was low. All three of those are separate claims — treat none of them as
-standing in for the others.
+Then run `.claude/skills/dev-loop-trial/` with a chosen run count and cycle cap. Read the [real-data baseline](../real_forbes/README.md) first.
