@@ -8,16 +8,38 @@ code. Only a genuinely new normalizer is a code change.
 """
 from __future__ import annotations
 
+import re
+
 _MAGNITUDES = {"K": 1_000, "M": 1_000_000, "B": 1_000_000_000, "T": 1_000_000_000_000}
 
-# A small, extensible country-name → ISO 3166-1 alpha-2 table. New entries are a
+# Some sources store a founding *date*, not a year (real fullcontact: "1908-01-01").
+# to_int_year parses a bare year and cannot be widened without changing what it
+# accepts for the sources already pointing at it.
+_ISO_DATE = re.compile(r"^(\d{4})-\d{2}-\d{2}$")
+
+# An extensible country-name → ISO 3166-1 alpha-2 table. New entries are a
 # one-line data addition (the kind of adapter growth this engagement is about).
+# The block below is every distinct country name in the real fullcontact export
+# that the seed rows did not already cover.
 _COUNTRY_TO_ISO = {
     "united states": "US", "usa": "US", "united states of america": "US",
     "united kingdom": "GB", "uk": "GB", "great britain": "GB",
     "germany": "DE", "india": "IN", "canada": "CA", "france": "FR",
     "japan": "JP", "china": "CN", "australia": "AU", "brazil": "BR",
     "netherlands": "NL", "spain": "ES", "italy": "IT", "sweden": "SE",
+    "switzerland": "CH", "ireland": "IE", "belgium": "BE", "austria": "AT",
+    "denmark": "DK", "finland": "FI", "norway": "NO", "poland": "PL",
+    "portugal": "PT", "greece": "GR", "luxembourg": "LU", "monaco": "MC",
+    "ukraine": "UA", "russia": "RU", "serbia": "RS", "croatia": "HR",
+    "czech republic": "CZ", "lithuania": "LT", "estonia": "EE", "albania": "AL",
+    "bosnia and herzegovina": "BA", "cyprus": "CY", "turkey": "TR", "israel": "IL",
+    "iran": "IR", "saudi arabia": "SA", "united arab emirates": "AE", "kuwait": "KW",
+    "bahrain": "BH", "oman": "OM", "pakistan": "PK", "bangladesh": "BD",
+    "south korea": "KR", "korea, north": "KP", "taiwan": "TW", "hong kong": "HK",
+    "singapore": "SG", "malaysia": "MY", "indonesia": "ID", "thailand": "TH",
+    "philippines": "PH", "new zealand": "NZ", "mexico": "MX", "argentina": "AR",
+    "colombia": "CO", "chile": "CL", "peru": "PE", "bermuda": "BM",
+    "greenland": "GL", "south africa": "ZA", "nigeria": "NG", "somalia": "SO",
 }
 _ISO_CODES = set(_COUNTRY_TO_ISO.values())
 
@@ -29,6 +51,21 @@ def identity(raw):
     return str(raw)
 
 
+def non_empty_text(raw):
+    """Pass a value through as a string, rejecting blanks and the literal "null".
+
+    A source that flattens an absent value to "" or to the four characters "null"
+    would otherwise have those placeholders counted as produced values, so a field
+    that delivered nothing for a quarter of its records would report full yield.
+    """
+    if raw is None:
+        raise ValueError("value is missing")
+    s = str(raw)
+    if not s.strip() or s.strip().lower() == "null":
+        raise ValueError(f"placeholder, not a value: {raw!r}")
+    return s
+
+
 def to_int_year(raw):
     """Parse a 4-digit year to int; reject implausible years."""
     try:
@@ -38,6 +75,20 @@ def to_int_year(raw):
     if not (1000 <= year <= 2100):
         raise ValueError(f"year out of range: {year}")
     return year
+
+
+def iso_date_to_year(raw):
+    """Take the year out of an ISO-8601 calendar date: "1908-01-01" -> 1908.
+
+    Deliberately strict: a bare year belongs to to_int_year, and accepting both
+    here would blur which shape a source actually stores.
+    """
+    if not isinstance(raw, str):
+        raise ValueError(f"not an ISO date: {raw!r}")
+    m = _ISO_DATE.match(raw.strip())
+    if m is None:
+        raise ValueError(f"not an ISO date: {raw!r}")
+    return to_int_year(m.group(1))
 
 
 def currency_to_usd(raw):
@@ -87,7 +138,9 @@ def to_list(raw):
 
 _REGISTRY = {
     "identity": identity,
+    "non_empty_text": non_empty_text,
     "to_int_year": to_int_year,
+    "iso_date_to_year": iso_date_to_year,
     "currency_to_usd": currency_to_usd,
     "country_to_iso": country_to_iso,
     "to_list": to_list,
