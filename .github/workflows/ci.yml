@@ -1,10 +1,23 @@
 name: CI
 
 on:
+  # Every branch, not just main. A feature-branch push used to run nothing, so a
+  # commit stayed unverified until someone opened a PR — which is how a lint-red
+  # cycle sat on a branch for five commits with a green badge above it.
   push:
-    branches: [main]
+  # Kept alongside `push` even though it double-runs on a branch with an open PR.
+  # A push builds the branch head; a pull_request builds the branch merged into
+  # main, and only the second catches "green on the branch, broken once main moved
+  # underneath it". This repo has already been bitten by main moving under a
+  # branch. Both jobs finish in about 20 seconds, so the duplicate is cheap.
   pull_request:
   workflow_dispatch:
+
+# Supersede rather than stack: pushing twice in quick succession cancels the
+# older run instead of queueing both.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
