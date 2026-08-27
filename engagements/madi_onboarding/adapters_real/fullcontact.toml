@@ -7,3 +7,7 @@
 source = "fullcontact"
 
 [fields]
+
+[fields.Attribute_2]
+target = "name"
+normalizer = "identity"
