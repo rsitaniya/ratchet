@@ -74,7 +74,24 @@ A control firing and a human declining are recorded as different outcomes. Colla
 
 Token cost is not reported. The harness does not expose a reliable per-subagent count, and an estimate would be the one unfalsifiable number in a document built on receipts.
 
-Numbers pending: the recorder is wired into both loop modes, and this section reports measured cycles once a measured set has been run.
+**Measured set: three cycles on the real `fullcontact` split.** This is the harder of the two real-data splits — `fullcontact`'s columns are anonymized (`Attribute_1`..`Attribute_6`, no header names), unlike `forbes`' self-descriptive columns, so the mapping has to come from record values, not column names. Each cycle onboarded one or more fields into the empty adapter and was reviewed at both gates:
+
+| Reported | Value |
+|---|---|
+| Cycles recorded / accepted at Gate 2 | 3 / 3 (100%) |
+| Accepted on first pass | 100% (0 resubmissions) |
+| Stopped by a control | 0 |
+| Human minutes per accepted change | 2.89 |
+| Wall minutes per accepted change | 4.88 |
+| Evaluator calls per accepted change | not measured (`--eval-log` was not set this run) |
+
+| Cycle | Outcome | Wall time | Human time at gates | `schema_f1` |
+|---|---|---|---|---|
+| 1 | kept | 273.5s | 157.3s | 0.00 → 0.2857 |
+| 2 | kept | 186.4s | 107.2s | 0.2857 → 0.50 |
+| 3 | kept | 417.6s | 255.6s | 0.50 → 0.9091 |
+
+Zero control stops is a limit of this set, not a claim the guard or the regression check are unneeded — no cycle in this run attempted a protected path or regressed an already-onboarded field. `integrated_rate` stayed `0.00` throughout: `fullcontact` has no source column at all for `industry`, `assets`, or `revenue`, so full integration is out of reach regardless of further cycles, and cycle 3's `founded` mapping declares the correct schema correspondence but cannot actually normalize real records — the source stores full ISO dates (`"1908-01-01"`) and the `to_int_year` normalizer only parses a bare year. Raw records: [`engagements/madi_onboarding/runs/delivery/cycles.jsonl`](runs/delivery/cycles.jsonl).
 
 ## What this engagement demonstrates
 
