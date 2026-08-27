@@ -14,7 +14,7 @@ The engagement evaluates two current correctness surfaces. It maps a source into
 
 The loop begins with replayed traffic and structured integration failures. An engagement-specific analyzer ranks the gaps. A human selects a bounded proposal. The implementer returns structured edits. The orchestrator validates every edit, runs tests and the evaluator, then asks a human to approve the exact tested change.
 
-The implementer cannot read or write the evaluator, gold labels, fixtures, matching engine, fusion engine, or prior receipts through its Claude Code grants. It can change adapters and rules. This is a workflow control for a local harness. It is not an operating-system security boundary.
+The implementer cannot write the evaluator, gold labels, fixtures, matching engine, fusion engine, or prior receipts, and cannot read the gold, the fixtures, or the receipts. Those are two separate lists enforced two separate ways: a guard inside the single write entry point, and a `PreToolUse` hook declared in the implementer's own agent definition so it binds that subagent rather than every session in the repository. It can change adapters and rules. This is a workflow control for a local harness. It is not an operating-system security boundary.
 
 ## Onboarding `forbes`
 
@@ -58,12 +58,31 @@ The current handoff uses structured `{file, old_string, new_string}` edits. `app
 
 The real-data trial is a bounded result. The source mapping has low ambiguity. Five successes do not establish general agent reasoning ability, broad reliability, or production readiness.
 
+## What the loop costs
+
+Two human approval gates are a claim about delivery, so the loop measures itself the way it measures the app. Every cycle writes one record: wall-clock by phase, human seconds at each gate, the outcome, resubmissions, submission size, evaluator invocations, and the metric deltas.
+
+| Reported | What it answers |
+|---|---|
+| Human minutes per accepted change | What the two gates actually cost the reviewer |
+| Wall minutes per accepted change | What a cycle costs end to end |
+| Acceptance rate at Gate 2 | How often a proposed change survives review |
+| First-pass rate | How often the first submission is the accepted one |
+| Control stops | How often a guard, the evaluator, or the tests ended a cycle instead of a human |
+
+A control firing and a human declining are recorded as different outcomes. Collapsing them would overstate reviewer workload and hide whether the controls do anything.
+
+Token cost is not reported. The harness does not expose a reliable per-subagent count, and an estimate would be the one unfalsifiable number in a document built on receipts.
+
+Numbers pending: the recorder is wired into both loop modes, and this section reports measured cycles once a measured set has been run.
+
 ## What this engagement demonstrates
 
 - An integration loop can work from domain failures instead of an open-ended prompt.
 - Independent evaluation can cover schema mapping, normalized values, entity matching, fusion, and source regression.
 - A control pattern can carry across different change surfaces: adapters, matching rules, and fusion rules.
 - The structured-edit contract removes diff hunk bookkeeping from the implementer’s task.
+- A delivery loop can report its own cost per accepted change instead of asserting throughput.
 - A separate data split can expose a synthetic-fixture result that fails to transfer.
 
 ## Limits
@@ -72,7 +91,8 @@ The real-data trial is a bounded result. The source mapping has low ambiguity. F
 - The real-data trial measures one low-ambiguity mapping source. It does not measure customer value or general agent capability.
 - The matching implementation is fixture-scale. Production entity resolution needs blocking, operational limits, monitoring, and recovery controls.
 - “Correct” means agreement with the available benchmark gold. It does not measure adoption, latency, or business value.
-- Claude Code deny rules enforce the documented implementer’s tool boundary. A user or orchestrator with broader grants can change that boundary.
+- A tool-call hook and a write guard enforce the documented implementer’s boundary. A user or orchestrator with broader grants can change either.
+- The delivery numbers describe this operator, this hardware, and these tasks. They are a cost floor for a reviewed cycle, not an industry benchmark.
 
 ## Inspect or reproduce
 

@@ -1,14 +1,22 @@
 {
+  "_comment": [
+    "Session-wide rules. The implementer's own read boundary is NOT here any more:",
+    "it is a PreToolUse hook in .claude/agents/implementer.md driven by",
+    "[protected].unreadable, so it binds that one subagent instead of every session",
+    "in this repo. What stays session-wide is narrower and deliberate: nobody",
+    "working in this repo — orchestrator or human — reads gold or fixtures, which",
+    "is the property the committed receipts under runs/ were authored under.",
+    "runs/ itself is readable again: Gate 2 shows receipts and the trial skill",
+    "writes a report it has to be able to read back."
+  ],
   "permissions": {
     "deny": [
       "Read(**/fixtures/**)",
       "Read(**/gold_*.json)",
       "Read(**/*_gold.json)",
-      "Read(**/runs/**)",
       "Grep(**/fixtures/**)",
       "Grep(**/gold_*.json)",
       "Grep(**/*_gold.json)",
-      "Grep(**/runs/**)",
       "Bash(git apply:*)"
     ]
   }

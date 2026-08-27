@@ -39,6 +39,10 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "module": "myservice.api:app",
         "base_url": "http://localhost:8000",
         "usage_log": "usage_log.jsonl",
+        # Per-cycle delivery telemetry (see scripts/cycle_log.py) — what each
+        # cycle cost in wall-clock, human gate time, and retries. Committed
+        # evidence, same as the run receipts beside it.
+        "cycle_log": "runs/delivery/cycles.jsonl",
         # Optional overrides for the app's target schema / adapters directory —
         # empty means "use the app's own hardcoded default." Only a config that
         # points the app at a different dataset (e.g. the real-data test split)
@@ -61,10 +65,22 @@ DEFAULTS: dict[str, dict[str, Any]] = {
     "traffic": {
         "replay_file": "",
     },
-    # Glob patterns the implementer patch may never touch (held-out evaluators,
-    # gold labels, fixtures, scoring). The orchestrator rejects patches that do.
+    # Two different boundaries, deliberately separate lists.
+    #
+    # `paths`   — globs the implementer may never WRITE (held-out evaluators,
+    #             gold labels, fixtures, scoring). check_protected_paths.py
+    #             rejects a submission touching one.
+    # `unreadable` — globs the implementer may never READ. Strictly narrower in
+    #             intent: it needs to read the engines and app source it edits
+    #             against, but must never see an answer key or a prior cycle's
+    #             converged output. check_readable.py enforces it as a
+    #             PreToolUse hook scoped to that one subagent.
+    #
+    # Unwritable is not the same set as unreadable, so unifying them would
+    # either blind the implementer to code it must read or leave gold readable.
     "protected": {
         "paths": [],
+        "unreadable": [],
     },
 }
 
@@ -73,7 +89,7 @@ DEFAULTS: dict[str, dict[str, Any]] = {
 # refers to its own files, not the repo root's. Non-path keys (module, base_url)
 # are deliberately excluded — resolving them would corrupt import paths and URLs.
 PATH_KEYS: dict[str, tuple[str, ...]] = {
-    "app": ("usage_log", "target_schema", "adapters_dir"),
+    "app": ("usage_log", "cycle_log", "target_schema", "adapters_dir"),
     "traffic": ("replay_file",),
 }
 

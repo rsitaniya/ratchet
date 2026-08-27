@@ -32,7 +32,14 @@ agent (or this skill's author) could have seen it.
 1. `git status --porcelain` must be empty. Trials revert the tree after every
    run; a dirty tree means reverting could destroy real uncommitted work.
 2. `FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.real.toml` must
-   resolve (`uv run python scripts/flywheel_config.py --get app.module`).
+   resolve (`uv run python scripts/flywheel_config.py --get app.module`), and
+   must be set in **Claude Code's own environment**, not just exported inside a
+   Bash step. The implementer's read-guard hook inherits Claude Code's
+   environment; a Bash `export` does not reach it, and the guard then fails
+   closed on every read the implementer makes. Verify with a bare
+   `[ -n "$FLYWHEEL_CONFIG" ]` in a Bash call that exports nothing first. If it
+   is unset, exit and relaunch as
+   `export FLYWHEEL_CONFIG=... && claude`.
 3. `engagements/madi_onboarding/adapters_real/forbes.toml` must be at its
    checked-in empty baseline (`source = "forbes"` with no `[fields.*]`
    entries) — every trial starts from the same point, or the convergence rate
@@ -56,6 +63,14 @@ Repeat the following for `trial = 1..N`. Set once per trial, unset after:
 export FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.real.toml
 export FLYWHEEL_EVAL_LOG="/tmp/dev-loop-trial-${trial}.eval_log.jsonl"
 rm -f "$FLYWHEEL_EVAL_LOG"
+```
+
+Every cycle inside a trial opens and closes a delivery record, exactly as
+`/dev-loop` does — `--gates auto` and `--trial` keep trial cost separable from
+human-gated cost, so neither contaminates the other's numbers:
+
+```bash
+uv run python scripts/cycle_log.py start --cycle "$cycle" --gates auto --trial "$trial"
 ```
 
 ### TRIAL STEP 1 — Baseline (same as /dev-loop STEP 1, minus the human-facing echo)
@@ -84,10 +99,12 @@ For `cycle = 1..5`, or until convergence:
 1. **Propose** — same as `/dev-loop` STEP 2: run `[app].analyzer`, read the
    app source, produce 2-3 grounded proposals.
 2. **Auto Gate 1** — take the top-ranked proposal (most affected records in
-   the gap report) without asking. Record which one was chosen and why.
+   the gap report) without asking. Record which one was chosen and why, then
+   `uv run python scripts/cycle_log.py mark analyze && uv run python scripts/cycle_log.py mark gate1`.
 3. **Implement** — invoke the `implementer` subagent exactly as `/dev-loop`
    STEP 4 does. It returns `EDITS` (structured `{file, old_string, new_string}`
    edits, never a hand-written diff — see `implementer.md`), not a patch.
+   Stamp the round-trip when it returns: `uv run python scripts/cycle_log.py mark implement`.
 4. **Apply** — `uv run python scripts/apply_edits.py <tempfile>`, the same
    single guarded entry point. Exit 2 (protected-path rejection) or exit 1
    (an edit's `old_string` not found/not unique, or a bad create) both mean
@@ -100,10 +117,15 @@ For `cycle = 1..5`, or until convergence:
    new cycle; if none remain, the trial ends non-converged. Record every guard
    rejection and every validation failure as a distinct count in the trial's
    outcome — they measure different things (policy compliance vs. edit
-   reliability).
-5. **Test** — `uv run pytest tests/ -v`. A failure here ends the cycle the
-   same way a rejected/invalid submission does.
-6. **Evaluate** — `eval "$EVALUATOR --baseline .dev_loop_trial_baseline.json"`.
+   reliability). `cycle_log.py` records both without a hand count: a resubmission
+   is another `mark implement`, and abandoning the cycle takes
+   `--outcome guard-rejected` or `--outcome validation-failed`. Stamp a clean
+   apply with `uv run python scripts/cycle_log.py mark apply`.
+5. **Test** — `uv run pytest tests/ -v`, then
+   `uv run python scripts/cycle_log.py mark test`. A failure here ends the cycle
+   the same way a rejected/invalid submission does (`--outcome tests-failed`).
+6. **Evaluate** — `eval "$EVALUATOR --baseline .dev_loop_trial_baseline.json" | tee .dev_loop_trial_evaluate.json`,
+   then `uv run python scripts/cycle_log.py mark evaluate`.
 7. **Auto Gate 2** — **Keep** iff tests passed AND `"regression": false`.
    **Revert this cycle's patch** (`git checkout -- .`) otherwise, and stop the
    trial — a trial does not retry a rejected cycle with a different proposal;
@@ -115,7 +137,19 @@ For `cycle = 1..5`, or until convergence:
    If converged, stop the trial early and record `cycles_used`.
 9. Tag every receipt or trial artifact this run writes with `"gates": "auto"`
    so nothing from a trial can be read as a human
-   approval.
+   approval. `cycle_log.py` already stamps that field on its own record; close
+   the cycle with the outcome the trial actually reached:
+   ```bash
+   uv run python scripts/cycle_log.py mark gate2
+   uv run python scripts/cycle_log.py finish --outcome kept \
+     --edits <this cycle's edits tempfile> \
+     --evaluate .dev_loop_trial_evaluate.json \
+     --baseline .dev_loop_trial_baseline.json \
+     --eval-log "$FLYWHEEL_EVAL_LOG"
+   ```
+   An auto-gated cycle still records `gate1`/`gate2` marks, and their durations
+   are near zero by construction. That is the point: it is what a human-gated
+   cycle's numbers get compared against.
 
 ### TRIAL STEP 3 — Record and revert
 
@@ -142,9 +176,13 @@ git checkout -- .
 git clean -fd -- engagements/madi_onboarding/adapters_real tests/
 ```
 
-Count evaluator invocations for this trial from `$FLYWHEEL_EVAL_LOG` (one
-line per `evaluate.py` call — see `evaluate.py`'s `FLYWHEEL_EVAL_LOG`
-handling) and record it alongside the trial's outcome.
+Evaluator invocations, cycle durations, resubmissions, and control stops are
+already in the delivery record `cycle_log.py finish` wrote — do not recount them
+by hand. Read them back with:
+
+```bash
+uv run python scripts/cycle_log.py report
+```
 
 ---
 
@@ -162,7 +200,10 @@ agentic system, not just a harness for one.
 ## IMPORTANT NOTES
 
 - **Every mechanical control from `/dev-loop` still runs.** This skill changes
-  who answers the two gates, not what runs between them.
+  who answers the two gates, not what runs between them. The implementer's read
+  boundary (`scripts/check_readable.py`, hooked into the implementer subagent
+  from its own frontmatter) is one of them: a trial can never begin by reading a
+  previous trial's converged mapping out of `runs/`.
 - **`"gates": "auto"` on every trial artifact** is the only thing that
   distinguishes a trial receipt from a real cycle's. Never omit it.
 - **Trials always revert**, Keep or Revert alike — a trial's job is to measure

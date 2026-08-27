@@ -15,6 +15,11 @@ evaluator** the loop is forbidden to edit. It selects itself purely via
 ## Quick start
 
 ```bash
+# 0. Export the engagement config BEFORE launching Claude Code — the
+#    implementer's read-guard hook inherits Claude Code's own environment,
+#    and a Bash step's export never reaches it.
+export FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.toml
+
 # 1. Install dependencies
 uv sync --all-extras --locked
 
@@ -44,6 +49,8 @@ uv run python engagements/madi_onboarding/to_replay.py --source forbes
 | `scripts/simulate.py` | Schema-driven simulator (called by /simulate skill) |
 | `scripts/flywheel_config.py` | Loads the active `flywheel.toml` (via `FLYWHEEL_CONFIG`); `--get KEY` accessor for shell steps |
 | `scripts/check_protected_paths.py` | Rejects any patch touching held-out evaluators/gold/fixtures/`runs/` (`[protected].paths`); fails closed if no config resolves |
+| `scripts/check_readable.py` | The implementer's READ boundary (`[protected].unreadable`), run as a `PreToolUse` hook from `implementer.md`'s frontmatter so it binds that subagent only; fails closed |
+| `scripts/cycle_log.py` | Per-cycle delivery telemetry — phase wall-clock, gate time, outcome, resubmissions, metric deltas; `report` derives cost per accepted change |
 | `scripts/apply_edits.py` | The single guarded entry point for landing structured edits — runs the protected-path guard, then validates every edit's exact match, then writes, in that order, atomically |
 | `engagements/madi_onboarding/` | Reference engagement: partner-data onboarding, ingest app, adapters, protected evaluator, its own analyzer, case study |
 | `tests/` | FastAPI TestClient tests — run with `uv run pytest tests/ -v` |
@@ -53,7 +60,7 @@ uv run python engagements/madi_onboarding/to_replay.py --source forbes
 
 ## Conventions
 
-- **One subagent, `implementer`, and its restriction is mechanical.** It holds `Read, Grep, Glob` — no Bash, no Edit, no Write — and returns structured edits as its only mutation request. Claude Code's deny rules block it from reading fixtures, gold, or `runs/` at the tool level. Everything else in the loop (feature proposal, the guard, the evaluator) is deterministic code or a human at one of the two gates — not a second or third subagent role.
+- **One subagent, `implementer`, and its restriction is mechanical.** It holds `Read, Grep, Glob` — no Bash, no Edit, no Write — and returns structured edits as its only mutation request. A `PreToolUse` hook in its own frontmatter (`check_readable.py`) blocks it from reading fixtures, gold, or `runs/` at the tool level. That hook is agent-scoped on purpose: a session-wide deny also blocked the orchestrator from receipts it needs at Gate 2. Everything else in the loop (feature proposal, the guard, the evaluator) is deterministic code or a human at one of the two gates — not a second or third subagent role.
 - **Tests use FastAPI TestClient** (in-process). The simulator uses httpx against the live server.
 - **Server must be running** before invoking /simulate or /dev-loop.
 - **usage_log.jsonl is runtime telemetry.** It is append-only during a run, but gitignored so local simulator traffic does not dirty the submission.
@@ -61,7 +68,9 @@ uv run python engagements/madi_onboarding/to_replay.py --source forbes
 - **Continuous mode:** Use `/loop /dev-loop`; `/dev-loop` itself is one complete cycle. `/dev-loop-trial` is a separate measurement mode that auto-answers both gates to measure agent convergence — never a mode for landing real changes.
 - **No domain knowledge in the loop.** `scripts/` and `.claude/` must stay generic. Anything app-specific belongs in `flywheel.toml` or an `engagements/<name>/` package's own analyzer (`[app].analyzer` is required — there is no generic fallback).
 - **Every submission goes through `scripts/apply_edits.py`, never a hand-written diff.** The implementer returns structured `{file, old_string, new_string}` edits. It does not calculate hunk headers or line counts. `apply_edits.py` runs the protected-path guard, validates every edit's `old_string` against current content, then writes atomically in that order. `.claude/settings.json` also denies `Bash(git apply:*)`, so a hand-crafted diff is not a shorter path. This is not an OS-level boundary: the orchestrator holds Edit/Write directly and could evade it deliberately. See `SECURITY.md`.
-- **Two human gates + a protected evaluator.** The loop blocks at Gate 1 (approve the proposal) and Gate 2 (approve the exact tested patch after the app's `[app].evaluator` runs). The implementer may never edit paths in `[protected].paths` (held-out evaluator, gold, fixtures, `runs/`) — `check_protected_paths.py` enforces this and fails closed if no config resolves.
+- **Two human gates + a protected evaluator.** The loop blocks at Gate 1 (approve the proposal) and Gate 2 (approve the exact tested patch after the app's `[app].evaluator` runs). The implementer may never edit paths in `[protected].paths` (held-out evaluator, gold, fixtures, `runs/`) — `check_protected_paths.py` enforces this and fails closed if no config resolves. It may never *read* paths in `[protected].unreadable` — `check_readable.py` enforces that, and walks a grepped directory rather than matching its name so gold cannot be reached through a parent.
+- **The loop measures itself.** Every cycle writes one delivery record via `cycle_log.py`: phase wall-clock, human seconds per gate, outcome, resubmissions, submission size, evaluator calls, metric deltas. A control firing (`regression-blocked`, `guard-rejected`, `validation-failed`, `tests-failed`) is a distinct outcome from a human declining (`reverted`). The model marks phase boundaries; it never computes a duration or copies a score. Token cost is deliberately not recorded — no reliable per-subagent count exists, and an invented one would undermine every other number.
+- **No CHANGELOG.md.** `git log` plus the receipts under `runs/` are the change record. Behaviour changes go in the docs that describe the behaviour.
 - **Adapters are data.** An engagement grows mostly by adding declarative config the app reads (e.g. onboarding adapters), not agent-written code; new code is reserved for genuinely new behavior and is covered by tests + the evaluator.
 
 ## Writing style — no AI slop
@@ -81,6 +90,11 @@ A green test suite proves the happy path, nothing more. Enforce these or the loo
 - **Prose never outruns code.** Re-verify factual claims (test counts, capability lists, gate counts) against reality on every doc change.
 - **Docs update in the same pass as the code, not after.** README, CASE_STUDY.md, SECURITY.md, ADAPTING.md, and this file describe behavior, gates, and numbers that live in code. A change to what they describe (a new gate, a wired check, a real vs. claimed metric) updates the doc in the same change — never a follow-up, never left stale.
 - **State the threat model.** This repo is a local, single-operator benchmark harness, not a hardened multi-tenant service. Say so where the claims live, so scope is explicit.
+- **A boundary binds the party it names.** A control scoped wider than the thing it describes is a bug, not extra caution — the session-wide read deny also blocked the orchestrator from receipts Gate 2 has to show. Scope it to the agent, then test the bypass (a grep at a parent directory), not the front door.
+- **Prune every pass; dead code is not defended by its tests.** Hunt what should not exist: a one-caller abstraction, a config key nothing reads, a fallback the real implementation superseded. Never argue "it has tests, so it is load-bearing" — ask what calls it first. A test over unused code makes deletion look risky and proves nothing; delete both. The calculator example and the generic analyzer fallback left this way.
+- **When the model keeps failing a step, change the contract.** Two of five trials returned a malformed diff because a read-only agent was hand-computing hunk headers it had no shell to verify. The fix was the structured-edit format, not a retry loop. Measure the failure, find the unverifiable part, remove it from the model's job.
+- **Unmeasured is not zero, and an adjective is a missing number.** `value_recall` is `null` on the real split, never `0.0`. "Controlled delivery" is a throughput claim, so cycles are measured. Where a number genuinely cannot be had — per-subagent token cost — name it and say why rather than leaving the gap looking accidental.
+- **Surface the understated signal.** The strongest evidence here is routinely buried: zero-domain-config discovery lives in a CI step, not the README's reuse claim. When the proof in the repo is stronger than the claim, move the proof to the claim.
 
 ## Precedence
 

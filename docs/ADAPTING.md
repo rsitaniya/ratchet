@@ -40,9 +40,13 @@ Adapt the `usage_logger` middleware in `engagements/madi_onboarding/app/main.py`
 | Domain correctness beyond HTTP | `[app].evaluator` | A known-wrong change lowers its score. |
 | Regression detection | Evaluator support for `--baseline FILE` | A known regression is rejected. |
 | Protected evaluator assets | `[protected].paths` | A returned structured edit targeting a protected path is rejected. |
+| Held-out material the agent must not read | `[protected].unreadable` | A `Read` of gold is denied, and so is a `Grep` of a parent directory containing it. |
+| Delivery cost | `[app].cycle_log` | One record per cycle; `cycle_log.py report` derives cost per accepted change. |
 | Separate evaluation distribution | A second config, fixtures, oracle, and write surface | The development adapter cannot silently overwrite the test surface. |
 
-An evaluator must emit JSON. It should accept `--baseline FILE` when regression matters. Keep its scorer, labels, fixtures, and engines outside the implementer’s readable and writable surface. This is a local workflow boundary. It does not replace production security controls.
+An evaluator must emit JSON. It should accept `--baseline FILE` when regression matters. Keep its scorer, labels, fixtures, and engines outside the implementer’s readable and writable surface.
+
+Those are two lists, not one. `[protected].paths` is what the agent may not write; `[protected].unreadable` is what it may not read. They differ because an agent usually has to read the engine it edits against. Copy the `hooks:` block from `.claude/agents/implementer.md` into your own agent definition to bind the read guard to it. This is a local workflow boundary. It does not replace production security controls.
 
 ## Acceptance checks
 
@@ -53,5 +57,6 @@ An evaluator must emit JSON. It should accept `--baseline FILE` when regression 
 5. Run the analyzer and confirm it produces a ranked, actionable signal.
 6. If an evaluator exists, prove a known-wrong change lowers its score and a protected-path edit is rejected.
 7. Run one cycle with a clean worktree and confirm that the final decision is an explicit Gate 2 approval.
+8. Confirm the cycle wrote one delivery record, and that `cycle_log.py report` reads it back.
 
 The [delivery-system architecture](DELIVERY_SYSTEM.md) explains the generic contracts. The [security model](../SECURITY.md) states the limits of the local controls.

@@ -31,6 +31,19 @@ paths = [
     ".claude/**",                                          # the orchestrator skills and agent definitions
 ]
 
+# What the implementer may never READ — a narrower list than `paths` above, and
+# enforced somewhere else entirely: check_readable.py, wired as a PreToolUse hook
+# in .claude/agents/implementer.md, so it binds that one subagent rather than the
+# whole session. The implementer still reads adapters.py, the app source, and the
+# ranked gap report; it never sees gold, the source records gold was derived from,
+# or a prior cycle's converged answer under runs/.
+unreadable = [
+    "**/fixtures/**",                                      # sources + gold (records, pairs, fused)
+    "**/gold_*.json", "**/*_gold.json",
+    "**/gold_*.jsonl", "**/*_gold.jsonl",
+    "**/runs/**",                                          # committed receipts, including converged adapters
+]
+
 [simulator]
 default_requests = 30
 

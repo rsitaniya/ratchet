@@ -38,6 +38,27 @@ now refuses to bless any patch until a real config is confirmed (see STEP 4) —
 but that refusal should not be the operator's first signal that `$FLYWHEEL_CONFIG`
 was wrong or unset. Surface it up front instead:
 
+**First, check the config the way the implementer's hook will see it.** This is
+its own step because it catches a failure nothing else does. The implementer's
+read guard runs as a `PreToolUse` hook, and a hook inherits *Claude Code's own*
+environment — not what a Bash step exports, because shell state does not persist
+between tool calls. So a cycle can look perfectly configured at every step below
+and still hand the implementer a guard that fails closed and denies every read,
+including the app source it must read to produce any edits at all. Run this in a
+Bash call with no `export` before it, or it proves nothing:
+
+```bash
+if [ -z "$FLYWHEEL_CONFIG" ]; then
+  echo "ABORT: FLYWHEEL_CONFIG is not set in Claude Code's own environment."
+  echo "  Every step below can still resolve it, but the implementer's read-guard"
+  echo "  hook cannot — it will fail closed and deny every Read and Grep it makes,"
+  echo "  including the app source it needs. Exit, export it, and relaunch:"
+  echo "    export FLYWHEEL_CONFIG=engagements/<name>/flywheel.toml && claude"
+  exit 1
+fi
+echo "Read guard will resolve: $FLYWHEEL_CONFIG"
+```
+
 ```bash
 if ! MODULE=$(uv run python scripts/flywheel_config.py --get app.module); then
   echo "ABORT: could not resolve the active config (see error above). Check \$FLYWHEEL_CONFIG."; exit 1
@@ -62,6 +83,17 @@ fi
 Empty for apps without one — the file is simply absent and
 STEP 6 skips the comparison. `.dev_loop_baseline.json` is gitignored scratch state,
 not a repo artifact.
+
+**Open the cycle's delivery record.** This is what makes the loop's own cost
+measurable instead of asserted — every `mark` below stamps a clock, and the
+record lands under `[app].cycle_log` at STEP 6. Never compute a duration
+yourself; that is the same mechanical bookkeeping the structured-edit contract
+exists to keep away from a model.
+
+```bash
+CYCLE=1   # increment per cycle; see STEP 9
+uv run python scripts/cycle_log.py start --cycle "$CYCLE" --gates human
+```
 
 Ensure the API server is running:
 
@@ -89,6 +121,7 @@ Show the current line count in the log:
 
 ```bash
 wc -l "$(uv run python scripts/flywheel_config.py --get app.usage_log)"
+uv run python scripts/cycle_log.py mark simulate
 ```
 
 ---
@@ -107,6 +140,7 @@ if [ -z "$ANALYZER" ]; then
   echo "ABORT: [app].analyzer is not set in the active flywheel.toml."; exit 1
 fi
 REPORT=$(eval "$ANALYZER" "$USAGE_LOG")
+uv run python scripts/cycle_log.py mark analyze
 ```
 
 Read `<app source file from config>` for what is already supported (existing
@@ -144,8 +178,21 @@ Format the question as:
 - Options: one per proposal (label = feature name, description = signal + one-liner)
 - Include a "Skip this cycle" option
 
-If the user selects "Skip this cycle", end the skill cleanly. Otherwise confirm
-the selection and proceed.
+If the user selects "Skip this cycle", close the cycle record and end the skill
+cleanly:
+
+```bash
+uv run python scripts/cycle_log.py mark gate1
+uv run python scripts/cycle_log.py finish --outcome skipped
+```
+
+Otherwise confirm the selection, stamp the gate, and proceed. The `gate1` mark
+goes in **after** the human answers — its duration is how long the human took,
+which is half the delivery-cost number this loop claims:
+
+```bash
+uv run python scripts/cycle_log.py mark gate1
+```
 
 ---
 
@@ -174,10 +221,20 @@ TEST_FILE: tests/test_[name].py
 
 **Orchestrator applies ALL the writes (the orchestrator is the sole writer):**
 
+Stamp the subagent round-trip as soon as it returns, before applying anything:
+
+```bash
+uv run python scripts/cycle_log.py mark implement
+```
+
 1. **Code + test edits** — Extract the `EDITS:` JSON into a temp file, then run:
    ```bash
    uv run python scripts/apply_edits.py <tempfile>
+   uv run python scripts/cycle_log.py mark apply
    ```
+   Keep that temp file for the rest of the cycle — STEP 6 passes it to
+   `cycle_log.py finish --edits` to record the submission's size without
+   asking you to count anything.
    This is the only path that applies edits: it runs the protected-path guard
    (from the edit list's file paths — no diff parsing needed), then validates
    every edit's `old_string` against the current file content before writing
@@ -190,7 +247,12 @@ TEST_FILE: tests/test_[name].py
    or a create target that already exists) — show the implementer the exact
    error and ask for a corrected `EDITS` list; do not hand-repair it yourself.
    A submission is atomic: one bad edit means none of them land, so a retry
-   resubmits the whole list, not a patch to the failing entry.
+   resubmits the whole list, not a patch to the failing entry. A retry re-runs
+   `mark implement`, which is how a resubmission gets counted. If you abandon
+   the cycle instead of retrying, close the record with the reason the control
+   gave — `--outcome guard-rejected` for exit 2, `--outcome validation-failed`
+   for exit 1 — so a control that fired is visible in the delivery numbers
+   rather than disappearing as an unrecorded cycle.
 2. **Test path sanity** — Confirm `TEST_FILE:` exists after the edits are applied and is under `tests/`.
 3. **Versioning** — A cycle does not change a version by default. Versioning is
    an explicit operator release decision outside this skill.
@@ -201,12 +263,16 @@ TEST_FILE: tests/test_[name].py
 
 ```bash
 uv run pytest tests/ -v
+uv run python scripts/cycle_log.py mark test
 ```
 
 **Tests must pass before continuing.** If tests fail:
 1. Read the error output carefully.
 2. Fix the issue directly via Edit (do not re-invoke the implementer subagent for small fixes).
 3. Re-run `uv run pytest` until all tests pass.
+
+If they cannot be made to pass, close the record with
+`--outcome tests-failed` rather than leaving the cycle unrecorded.
 
 ---
 
@@ -223,12 +289,16 @@ reading the actual diff are what catch that.
    EVALUATOR=$(uv run python scripts/flywheel_config.py --get app.evaluator)
    if [ -n "$EVALUATOR" ]; then
      if [ -s .dev_loop_baseline.json ]; then
-       eval "$EVALUATOR --baseline .dev_loop_baseline.json"
+       eval "$EVALUATOR --baseline .dev_loop_baseline.json" | tee .dev_loop_evaluate.json
      else
-       eval "$EVALUATOR"   # no baseline on record (e.g. first-ever cycle) — score only
+       eval "$EVALUATOR" | tee .dev_loop_evaluate.json   # no baseline on record (e.g. first-ever cycle) — score only
      fi
    fi
+   uv run python scripts/cycle_log.py mark evaluate
    ```
+   `tee` because STEP 6.4 hands both this file and the STEP 1 baseline to
+   `cycle_log.py finish`, which derives the metric deltas itself — you never
+   transcribe a score.
    Empty `app.evaluator` → no evaluator declared — skip to step 2.
    Capture the machine-readable result. **If it reports `"regression": true`, this is a
    hard failure — treat it exactly like a failing test, not something to note and
@@ -236,9 +306,27 @@ reading the actual diff are what catch that.
    (below), or fix the patch and re-run STEP 5 onward. A regression means the loop
    improved the new source by silently breaking one that already worked — for an
    onboarding system that is the worst failure mode there is, so it blocks the gate
-   the same way a failing test does.
+   the same way a failing test does. If you revert on this, close the record with
+   `--outcome regression-blocked`, not `reverted` — a control firing and a human
+   declining are different facts, and collapsing them would overstate the human's
+   workload and understate the controls.
 2. **Show the human the exact change.** Present the diff hash (`git diff | git hash-object --stdin`), the changed-file list, the diff (or a tight summary if large), and the evaluator result. Use AskUserQuestion: "Keep this patch? (Gate 2)" with options Keep / Revert.
 3. **On Revert:** restore the pre-cycle tree, report why, and end the cycle cleanly. Because STEP 1 refused to start on a dirty tree, everything uncommitted belongs to this cycle, so `git checkout -- .` followed by `git clean -fd` is safe — gitignored runtime files (e.g. the usage log) are preserved. **On Keep:** proceed.
+4. **Close the cycle record**, immediately after the human answers, whichever way
+   they answered:
+   ```bash
+   uv run python scripts/cycle_log.py mark gate2
+   uv run python scripts/cycle_log.py finish \
+     --outcome kept \
+     --edits <the STEP 4 tempfile> \
+     --evaluate .dev_loop_evaluate.json \
+     --baseline .dev_loop_baseline.json \
+     ${FLYWHEEL_EVAL_LOG:+--eval-log "$FLYWHEEL_EVAL_LOG"}
+   ```
+   Swap `--outcome` for `reverted`, `regression-blocked`, `tests-failed`,
+   `guard-rejected`, or `validation-failed` as the cycle actually ended. The
+   record is one line under `[app].cycle_log`; `cycle_log.py report` turns the
+   accumulated lines into the delivery economics.
 
 Do NOT proceed past this gate without an explicit Keep. For an app with no
 evaluator and no `[protected]` paths this is a quick visual confirm of the
@@ -300,6 +388,11 @@ Report to the user:
 - What feature was implemented
 - Test results (pass/fail count)
 - Whether the new operation appears in the simulator
+- The cycle's delivery cost, from the record STEP 6 just closed:
+
+```bash
+uv run python scripts/cycle_log.py report
+```
 
 This skill intentionally performs one complete cycle and exits. The fully automated
 bonus is handled by Claude Code's built-in loop runner:
@@ -318,9 +411,12 @@ to stop.
 
 - **One subagent, `implementer`, and its restriction is mechanical, not procedural.**
   It holds `Read, Grep, Glob` — no Bash, no Edit, no Write — so returned edits
-  are its *only* possible mutation path, and Claude Code's own deny rules block
-  it from reading fixtures, gold, or `runs/` at the tool level (not just by
-  instruction). Feature proposal (STEP 2) does not warrant a second subagent:
+  are its *only* possible mutation path, and a `PreToolUse` hook declared in
+  `implementer.md`'s own frontmatter (`scripts/check_readable.py`, driven by
+  `[protected].unreadable`) blocks it from reading fixtures, gold, or `runs/` at
+  the tool level, not just by instruction. That hook is scoped to the subagent:
+  it binds the implementer and not this orchestrator, which needs `runs/` to
+  show receipts at Gate 2. Feature proposal (STEP 2) does not warrant a second subagent:
   the orchestrator already holds the signal report and the app source that
   step needs, and a subagent there would only reformat what it already has —
   its output is a few sentences a human chooses between at Gate 1, which is not

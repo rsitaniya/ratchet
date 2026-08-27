@@ -42,13 +42,32 @@ This proves that the local API, replay, telemetry, analyzer, and evaluator are c
 
 ## Run one reviewed change cycle
 
-Open Claude Code in this repository and run:
+Export the engagement configuration **before** launching Claude Code, then run
+the loop:
+
+```bash
+export FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.toml
+claude
+```
 
 ```text
 /dev-loop
 ```
 
+The order matters. The implementer's read guard runs as a `PreToolUse` hook, and
+a hook inherits Claude Code's own environment — exporting the variable inside a
+Bash step later does not reach it. Launch without it and the guard fails closed
+on every read the implementer makes, including the app source it needs.
+`/dev-loop` STEP 1 refuses to start in that state rather than letting the cycle
+fail confusingly further in.
+
 The loop rejects a dirty worktree, presents a scoped proposal, validates the returned structured edits, runs tests and the configured evaluator, then asks whether to retain the exact tested result. `/loop /dev-loop` repeats this workflow. It does not remove either approval gate.
+
+Each cycle also records what it cost. Read the accumulated delivery numbers with:
+
+```bash
+uv run python scripts/cycle_log.py report
+```
 
 ## Inspect the real-data trial setup
 
@@ -72,5 +91,8 @@ Read the [real-data baseline](engagements/madi_onboarding/runs/real_forbes/READM
 | No integration telemetry | Export `USAGE_LOG_PATH` before starting the API. |
 | Evaluator result differs from a receipt | Check which adapter or rule snapshot is installed and which prior evaluator output was used as `--baseline`. |
 | Protected-path rejection | Confirm the edit targets an adapter or rule, not fixtures, gold, engines, evaluator, or `runs/`. |
+| Implementer reports a denied read | Expected for gold, fixtures, and `runs/`. If an ordinary source file is denied, check `[protected].unreadable` in the active configuration. |
+| Every implementer read is denied, including app source | `FLYWHEEL_CONFIG` was not set in Claude Code's environment at launch. The read guard fails closed rather than guessing an engagement. Exit, export it, relaunch. |
+| `no cycle in progress` | `cycle_log.py mark` ran before `cycle_log.py start`. Start a cycle, or ignore it if you are not measuring. |
 
 For another API, use the [adaptation guide](docs/ADAPTING.md).

@@ -13,7 +13,7 @@ The reference engagement is a partner-data API. It demonstrates one delivery loo
 - **Onboarding:** map a new source into a canonical company schema without regressing a source that already works.
 - **Reconciliation:** match entities across sources, then resolve the attribute conflicts exposed by those matches.
 
-The implementer cannot write directly. It returns structured edits. The orchestrator checks their paths and exact prior content before it writes, then runs tests and an evaluator whose gold, fixtures, and core scoring paths are protected.
+The implementer cannot write directly. It returns structured edits. The orchestrator checks their paths and exact prior content before it writes, then runs tests and an evaluator whose gold, fixtures, and core scoring paths are protected. Every cycle records what it cost, so the delivery claim is a number rather than an adjective.
 
 This is a local, single-operator benchmark harness. It is not an autonomous deployment product or a claim of production customer impact.
 
@@ -26,6 +26,7 @@ This is a local, single-operator benchmark harness. It is not an autonomous depl
 | Can a new source be onboarded without breaking an existing one? | `forbes` schema F1: `0.00 → 1.00`; value recall: `0.00 → 1.00`; no `dbpedia` regression across two recorded cycles. | The reference onboarding loop can improve a bounded adapter against held-out synthetic gold. |
 | Can the same loop handle a different kind of correctness? | Entity-matching F1: `0.00 → 1.00`; fusion accuracy: `0.875 → 1.00`; no source regression across two recorded cycles. | The same controls work when the change surface moves from field mapping to matching and fusion rules. |
 | Does the implementer converge on a separate real-data mapping task? | Five auto-gated trials on real MaDI-Bench Forbes data reached schema F1 `1.00` in one cycle each. | On this low-ambiguity mapping task, the implementer reached the documented target under the recorded trial protocol. |
+| What does a reviewed cycle cost? | Every cycle records phase wall-clock, human time at each gate, outcome, resubmissions, and evaluator calls; `cycle_log.py report` derives human and wall minutes per accepted change. | The two gates have a measured price. Numbers land here once a measured set has been run. |
 
 The [receipt index](engagements/madi_onboarding/runs/MADI_EXAMPLE.md) contains every synthetic-cycle input, gap report, edit, hash, and evaluator output. The [trial report](engagements/madi_onboarding/runs/trials/README.md) contains the real-data trial protocol, failures, and limits.
 
@@ -35,15 +36,18 @@ The [receipt index](engagements/madi_onboarding/runs/MADI_EXAMPLE.md) contains e
 |---|---|---|
 | **Signal before change** | A telemetry analyzer ranks concrete integration failures before an agent proposes work. | The two reference engagements start from replayed traffic and gap reports. An analyzer still needs domain knowledge. |
 | **Structured edits, not model-authored diffs** | A read-only implementer cannot verify diff hunk bookkeeping. Exact `old_string` validation gives it a simpler, checkable handoff. | `apply_edits.py` applies all edits atomically or none. The orchestrator remains a trusted writer. |
-| **Independent evaluation** | HTTP success cannot establish schema, value, matching, or fusion correctness. | Gold, fixtures, scorer, engines, and receipts sit outside the implementer’s tool grants and writable surface. Tool grants are not OS permissions. |
+| **Independent evaluation** | HTTP success cannot establish schema, value, matching, or fusion correctness. | Gold, fixtures, and receipts are unreadable to the implementer; the scorer and engines are unwritable. Both are tool-call controls, not OS permissions. |
 | **Separate real-data trial** | A fitted dev-fixture adapter may overfit aggregate score feedback. | The real MaDI configuration uses a separate adapter surface and oracle. The measured task is low-ambiguity and does not establish general agent reasoning ability. |
 | **Two human gates** | Scope and final acceptance are accountable decisions. | Gate 1 approves the proposal. Gate 2 approves the exact tested result. The loop never merges or deploys itself. |
+| **Boundaries scoped to the agent they bind** | A read boundary enforced session-wide also blocks the orchestrator from receipts it needs at Gate 2. | The implementer's read deny is a `PreToolUse` hook in its own agent definition. Gold and fixtures stay denied repository-wide; `runs/` does not. |
+| **The loop measures itself** | Two approval gates are a throughput claim, and a throughput claim needs a number. | Per-cycle delivery records give cost per accepted change. Token cost is not claimed: the harness exposes no reliable per-subagent count. |
 
 ## How known failures behave
 
 | Failure | Current response |
 |---|---|
 | An edit targets the evaluator, gold, fixtures, engines, or receipts | The protected-path guard rejects it before any write. |
+| The implementer tries to read gold, fixtures, or a prior receipt | The agent-scoped read hook denies the call, including a grep aimed at a parent directory, and denies everything if no configuration resolves. |
 | An edit was prepared against stale or ambiguous source text | `apply_edits.py` rejects the full submission. Every `old_string` must match exactly once. |
 | A candidate improves one metric and regresses another | Gate 2 compares evaluator output with the pre-cycle baseline and blocks a regression. |
 | The simulator cannot reach the API or misses its discovered behavior | CI fails on a transport exception and requires telemetry for `/ingest` and `/reconcile`. |
@@ -56,6 +60,7 @@ The [receipt index](engagements/madi_onboarding/runs/MADI_EXAMPLE.md) contains e
 - [Security model](SECURITY.md) — workflow controls, adversarial cases, and residual risks.
 - [Run receipts](engagements/madi_onboarding/runs/MADI_EXAMPLE.md) — raw reproducible evidence for onboarding and reconciliation.
 - [Real-data baseline](engagements/madi_onboarding/runs/real_forbes/README.md) and [convergence trials](engagements/madi_onboarding/runs/trials/README.md) — separate test-split evidence.
+- [Delivery cost](engagements/madi_onboarding/CASE_STUDY.md#what-the-loop-costs) — what a reviewed cycle takes in human and wall time.
 - [Local runbook](SETUP.md) — install and reproduce the reference engagement.
 - [Adaptation guide](docs/ADAPTING.md) — configure the generic loop for another FastAPI API.
 - [Data license notice](engagements/madi_onboarding/DATA_LICENSE_NOTICE.md) — boundaries for the external benchmark data.
@@ -78,6 +83,7 @@ To replay the onboarding baseline, follow the two-terminal procedure in [SETUP.m
 - The real-data trial measures one source mapping. It does not establish customer impact, production throughput, tenant isolation, or broad agent capability.
 - `/reconcile` is fixture-scale. Production entity resolution needs blocking, resource limits, monitoring, and recovery controls.
 - The local permission model constrains the documented implementer. It does not create an operating-system security boundary.
+- Delivery numbers describe one operator on one machine across these tasks. They are a cost floor for a reviewed cycle, not a benchmark.
 
 ## License
 

@@ -53,10 +53,19 @@ def touched_paths(edits: list[dict], repo_root: Path) -> list[str]:
     return sorted(paths)
 
 
-def _matches(path: str, glob: str) -> bool:
-    # Match the full path, the path with a leading "**/" stripped (so a
-    # repo-root file matches too), and the basename — so `**/evaluate.py`
-    # catches evaluate.py wherever it sits and however the edit's path is written.
+def matches_glob(path: str, glob: str) -> bool:
+    """True if a repo-relative path is described by one protected glob.
+
+    Matches the full path, the path with a leading "**/" stripped (so a
+    repo-root file matches too), and the basename — so `**/evaluate.py` catches
+    evaluate.py wherever it sits and however the edit's path is written.
+
+    The basename arm deliberately over-matches: `**/evaluate.py` blocks ANY file
+    named evaluate.py, including a legitimate new one somewhere unrelated. That
+    is the intended trade. A false positive costs one rejected submission and a
+    clearer glob; a false negative silently lets the loop edit what scores it.
+    Shared with check_readable.py so "what does this glob mean" has one answer.
+    """
     bare = glob[3:] if glob.startswith("**/") else glob
     name = path.rsplit("/", 1)[-1]
     return fnmatch.fnmatch(path, glob) or fnmatch.fnmatch(path, bare) or fnmatch.fnmatch(name, bare)
@@ -67,7 +76,7 @@ def protected_hits(paths: list[str], globs: list[str]) -> list[tuple[str, str]]:
     hits = []
     for path in paths:
         for glob in globs:
-            if _matches(path, glob):
+            if matches_glob(path, glob):
                 hits.append((path, glob))
                 break
     return hits

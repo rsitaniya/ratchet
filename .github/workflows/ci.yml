@@ -158,6 +158,62 @@ jobs:
             echo "correctly rejected: $p"
           done
 
+      # The implementer's READ boundary, exercised the way it would be attacked.
+      # A guard that only rejects a direct read of a gold file is theatre: the
+      # case that matters is reaching held-out material through a parent
+      # directory whose own name matches no glob. Also checks it fails closed
+      # with no config, rather than blessing every read because nothing resolved.
+      - name: Read guard holds the implementer out of gold, fixtures, and receipts
+        run: |
+          set -e
+          deny() {
+            if echo "$2" | uv run python scripts/check_readable.py 2>/dev/null; then
+              echo "ERROR: $1 was NOT denied"; exit 1
+            fi
+            echo "correctly denied: $1"
+          }
+          allow() {
+            if ! echo "$2" | uv run python scripts/check_readable.py; then
+              echo "ERROR: $1 was denied but must be readable"; exit 1
+            fi
+            echo "correctly allowed: $1"
+          }
+          deny "direct read of gold" \
+            '{"tool_name":"Read","tool_input":{"file_path":"engagements/madi_onboarding/fixtures/gold_records.jsonl"}}'
+          deny "grep of the engagement dir reaching gold sideways" \
+            '{"tool_name":"Grep","tool_input":{"path":"engagements/madi_onboarding","pattern":"revenue"}}'
+          deny "read of a prior cycle receipt" \
+            '{"tool_name":"Read","tool_input":{"file_path":"engagements/madi_onboarding/runs/MADI_EXAMPLE.md"}}'
+          allow "the adapter the implementer must edit" \
+            '{"tool_name":"Read","tool_input":{"file_path":"engagements/madi_onboarding/adapters/forbes.toml"}}'
+          allow "the app source it edits against" \
+            '{"tool_name":"Read","tool_input":{"file_path":"engagements/madi_onboarding/app/main.py"}}'
+          if echo '{"tool_name":"Read","tool_input":{"file_path":"README.md"}}' \
+             | env -u FLYWHEEL_CONFIG uv run python scripts/check_readable.py 2>/dev/null; then
+            echo "ERROR: read guard did not fail closed with no config"; exit 1
+          fi
+          echo "correctly failed closed with no config"
+
+      # The hook above only binds the implementer if it is actually wired into
+      # that agent's frontmatter. Assert the wiring, so moving the guard to
+      # agent scope cannot silently become no guard at all.
+      - name: Read guard is wired into the implementer subagent
+        run: |
+          uv run python - <<'PY'
+          from pathlib import Path
+          fm = Path(".claude/agents/implementer.md").read_text().split("---")[1]
+          assert "PreToolUse" in fm, "implementer.md declares no PreToolUse hook"
+          assert "check_readable.py" in fm, "implementer.md does not run the read guard"
+          assert "Read|Grep" in fm, "read guard is not matched to Read and Grep"
+          assert "tools: Read, Grep, Glob" in fm, "implementer tool grant changed"
+          settings = Path(".claude/settings.json").read_text()
+          assert "**/runs/**" not in settings, (
+              "runs/ is denied session-wide again — that blocks the orchestrator "
+              "from showing receipts at Gate 2"
+          )
+          print("read guard wired to the implementer subagent")
+          PY
+
       # The committed receipts under runs/ are the evidence for the README and
       # CASE_STUDY numbers. Nothing enforced that they stay honest as the engines
       # they were computed from changed, so recompute every one from its committed
@@ -232,6 +288,34 @@ jobs:
             fi
           done
           echo "diff hashes OK: every runs/*.diff matches its committed *.diff_hash.txt"
+
+      # Delivery telemetry, end to end. The economics claim rests on this file
+      # being written correctly by the skills, so drive one full cycle's worth of
+      # marks and assert the derived record — not just the unit tests.
+      - name: Cycle log records a full cycle and derives its economics
+        run: |
+          set -e
+          uv run python scripts/cycle_log.py start --cycle 1 --gates human
+          for phase in simulate analyze gate1 implement apply implement apply test evaluate gate2; do
+            uv run python scripts/cycle_log.py mark "$phase"
+          done
+          printf '[{"file":"a.toml","old_string":"x","new_string":"yy"}]' > /tmp/edits.json
+          uv run python scripts/cycle_log.py finish --outcome kept --edits /tmp/edits.json
+          uv run python scripts/cycle_log.py report
+          uv run python - <<'PY'
+          import json, os, subprocess
+          log = subprocess.run(
+              ["uv", "run", "python", "scripts/flywheel_config.py", "--get", "app.cycle_log"],
+              capture_output=True, text=True, check=True).stdout.strip()
+          rec = json.loads(open(log).read().splitlines()[-1])
+          assert rec["outcome"] == "kept", rec
+          assert rec["resubmissions"] == 1, rec        # two `implement` marks = one retry
+          assert rec["files"] == 1 and rec["edits"] == 1, rec
+          assert rec["control_stop"] is False, rec
+          assert set(rec["seconds"]) >= {"gate1", "gate2", "implement"}, rec
+          os.remove(log)                               # CI must not commit a synthetic cycle
+          print("cycle log OK:", rec["total_seconds"], "s")
+          PY
 
       # Reproducibility check: the pinned downloader fetches the real MaDI data and
       # verifies git blob SHAs. Non-fatal so external availability never reds CI.

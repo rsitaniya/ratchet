@@ -39,6 +39,20 @@ paths = [
     "**/data/madi/**",
 ]
 
+# Read boundary (check_readable.py, hooked into the implementer subagent only).
+# Deliberately looser than the synthetic split's: `data/madi/sources/*.jsonl`
+# stays READABLE because the implementer needs real column values to pick a
+# normalizer (currency vs. country vs. year), and no value gold exists for this
+# split to leak. Its schema gold does not: gold_mapping.json is generated under
+# data/madi/ and matches `**/gold_*.json` below. runs/trials/ is unreadable so a
+# trial can never start by reading a previous trial's converged mapping.
+unreadable = [
+    "**/fixtures/**",
+    "**/gold_*.json", "**/*_gold.json",
+    "**/gold_*.jsonl", "**/*_gold.jsonl",
+    "**/runs/**",
+]
+
 [simulator]
 default_requests = 30
 
