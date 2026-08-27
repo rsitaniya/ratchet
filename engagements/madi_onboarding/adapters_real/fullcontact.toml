@@ -8,6 +8,10 @@ source = "fullcontact"
 
 [fields]
 
+[fields.Attribute_1]
+target = "id"
+normalizer = "identity"
+
 [fields.Attribute_2]
 target = "name"
 normalizer = "identity"
