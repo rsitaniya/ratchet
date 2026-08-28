@@ -8,6 +8,7 @@ code. Only a genuinely new normalizer is a code change.
 """
 from __future__ import annotations
 
+import ast
 import re
 
 _MAGNITUDES = {"K": 1_000, "M": 1_000_000, "B": 1_000_000_000, "T": 1_000_000_000_000}
@@ -136,6 +137,35 @@ def to_list(raw):
     return [raw]
 
 
+def to_text_list(raw):
+    """Normalize a text column holding one value or many into a list of strings.
+
+    Real fullcontact Attribute_5 has exactly three shapes across its 1931 records:
+    "" (1739), a bare name like "Raphael Bemporad" (120), and a *stringified* Python
+    list literal like "['Ron Wayne', 'Steve Jobs', 'Steve Wozniak']" (72) — a string
+    whose content is a list, not a JSON array. to_list fits none of them: it turns ""
+    into [""] and the literal into one element holding the raw text, so a column that
+    delivers key people for a tenth of its records would report full yield.
+
+    A bracketed value that does not parse raises rather than degrading to a
+    one-element list, so a shape nobody anticipated surfaces as INVALID_VALUE_FORMAT
+    instead of as a plausible wrong value.
+    """
+    s = non_empty_text(raw).strip()
+    if not s.startswith("["):
+        return [s]
+    try:
+        items = ast.literal_eval(s)
+    except (ValueError, SyntaxError, TypeError):
+        raise ValueError(f"not a list literal: {raw!r}") from None
+    if not isinstance(items, list):
+        raise ValueError(f"not a list literal: {raw!r}")
+    values = [str(v).strip() for v in items if str(v).strip()]
+    if not values:
+        raise ValueError(f"list literal holds no values: {raw!r}")
+    return values
+
+
 _REGISTRY = {
     "identity": identity,
     "non_empty_text": non_empty_text,
@@ -144,6 +174,7 @@ _REGISTRY = {
     "currency_to_usd": currency_to_usd,
     "country_to_iso": country_to_iso,
     "to_list": to_list,
+    "to_text_list": to_text_list,
 }
 
 

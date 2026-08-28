@@ -16,6 +16,10 @@ normalizer = "country_to_iso"
 target = "city"
 normalizer = "non_empty_text"
 
+[fields.Attribute_5]
+target = "keypeople"
+normalizer = "to_text_list"
+
 [fields.Attribute_6]
 target = "founded"
 normalizer = "iso_date_to_year"

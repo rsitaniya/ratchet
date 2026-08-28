@@ -40,10 +40,10 @@ def test_fullcontact_attribute_1_maps_to_id():
     assert res["target"]["id"] == "fullcontact_1"
 
 
-def test_fullcontact_key_people_is_the_only_unmapped_column():
+def test_fullcontact_has_no_unmapped_columns_left():
     # Attribute_1/Attribute_2 were the UNMAPPED_FIELD signal an earlier cycle acted
-    # on. Attribute_5 (key people) is the one column still out of scope, so it must
-    # keep reporting it.
+    # on. Attribute_5 (key people) was the last column out of scope; now that it is
+    # mapped, this source reports no unmapped column at all.
     schema = {"attributes": {}}
     adapter = A.load_adapter("fullcontact", ADAPTERS_REAL)
     rec = {
@@ -57,8 +57,9 @@ def test_fullcontact_key_people_is_the_only_unmapped_column():
     res = A.apply_adapter(rec, adapter, schema)
     assert res["target"]["id"] == "fullcontact_17"
     assert res["target"]["name"] == "Renault"
+    assert res["target"]["keypeople"] == ["Fernand Renault", "Louis Renault", "Marcel Renault"]
     unmapped = {f["field"] for f in res["failures"] if f["error_code"] == "UNMAPPED_FIELD"}
-    assert unmapped == {"Attribute_5"}
+    assert unmapped == set()
 
 
 def test_fullcontact_identity_columns_produce_values_on_a_sparse_record():
