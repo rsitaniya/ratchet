@@ -74,7 +74,7 @@ A control firing and a human declining are recorded as different outcomes. Colla
 
 Two numbers are deliberately absent. **Token cost:** the harness does not expose a reliable per-subagent count, and an estimate would be the one unfalsifiable number in a document built on receipts. **Human decision time:** each gate span runs from the previous phase mark to the human's answer, so it contains the orchestrator composing the proposals or rendering the diff as well as an operator thinking, and nothing in the loop marks the boundary between them. A "human minutes" figure derived from that span would be agent time wearing a human label, so the loop reports agent time — the phases with no operator in them at all — and honest wall-clock beside it.
 
-**Measured set: three cycles on the real `fullcontact` split.** This is the harder of the two real-data splits — `fullcontact`'s columns are anonymized (`Attribute_1`..`Attribute_6`, no header names), unlike `forbes`' self-descriptive columns, so the mapping has to come from record values, not column names. Each cycle onboarded one or more fields into the empty adapter and was reviewed at both gates:
+**Measured set: three cycles on the real `fullcontact` split.** This is the harder of the two real-data splits — `fullcontact`'s columns are anonymized (`Attribute_1`..`Attribute_6`, no header names), unlike `forbes`' self-descriptive columns, so the mapping has to come from record values, not column names. Each cycle onboarded one or more fields into the empty adapter and was reviewed at both gates: cycle 1 mapped `id` and `name`, cycle 2 `country`, `city` and `founded`, cycle 3 `keypeople`. This set is a re-measurement of the split from an empty adapter under the per-field verification contract described in the next section; the earlier run it replaces is discussed there.
 
 <!-- delivery-economics:start -->
 | Reported | Value |
@@ -82,26 +82,28 @@ Two numbers are deliberately absent. **Token cost:** the harness does not expose
 | Cycles recorded / accepted at Gate 2 | 3 / 3 (100%) |
 | Accepted on first pass | 100% (0 resubmissions) |
 | Stopped by a control | 0 |
-| Agent minutes per accepted change | 1.99 |
-| Wall minutes per accepted change (incl. gates) | 4.88 |
+| Agent minutes per accepted change | 7.26 |
+| Wall minutes per accepted change (incl. gates) | 156.06 |
 | Evaluator calls per accepted change | not measured (`--eval-log` was not set this run) |
 
 | Cycle | Outcome | Wall time | Agent time | Metrics moved |
 |---|---|---|---|---|
-| 1 | kept | 273.5s | 116.2s | `fullcontact.schema_f1` 0.0 → 0.2857 |
-| 2 | kept | 186.4s | 79.2s | `fullcontact.schema_f1` 0.2857 → 0.5 |
-| 3 | kept | 417.6s | 162.1s | `fullcontact.schema_f1` 0.5 → 0.9091 |
+| 1 | kept | 685.4s | 382.1s | `fullcontact.field_yield.id` new → 1.0, `fullcontact.field_yield.name` new → 1.0, `fullcontact.schema_f1` 0.0 → 0.5 |
+| 2 | kept | 904.9s | 531.9s | `fullcontact.field_yield.city` new → 0.7121, `fullcontact.field_yield.country` new → 0.7359, `fullcontact.field_yield.founded` new → 0.5469, `fullcontact.schema_f1` 0.5 → 0.9091 |
+| 3 | kept | 26500.0s | 393.5s | `fullcontact.field_yield.keypeople` new → 0.0994, `fullcontact.schema_f1` 0.9091 → 1.0 |
 <!-- delivery-economics:end -->
 
 Generated from [`runs/delivery/cycles.jsonl`](runs/delivery/cycles.jsonl) by `scripts/render_delivery_table.py`; CI fails if this region drifts from the committed records, so no figure here was retyped by hand.
 
 Zero control stops is a limit of this set, not a claim the guard or the regression check are unneeded — no cycle in this run attempted a protected path or regressed an already-onboarded field. Raw records: [`engagements/madi_onboarding/runs/delivery/cycles.jsonl`](runs/delivery/cycles.jsonl).
 
+One figure in that table has to be read with care. `Wall minutes per accepted change` is `156.06` because cycle 3's Gate 2 span ran for 25,996 seconds with nobody at the terminal; cycles 1 and 2 closed in 685s and 905s. Agent time is unaffected at `7.26` minutes per accepted change and is the figure to use for throughput. The wall number is published as measured rather than trimmed, for the same reason token cost is absent: a span this loop cannot decompose is not one it should quietly clean up.
+
 ## What the evaluator could not see
 
-The most useful result in this run is cycle 3, and it is a failure the metric reported as a success.
+The most useful result on this split came from an earlier run, and it is a failure the metric reported as a success. That run's delivery receipts were reset so the split could be re-measured under the contract it motivated — the table above is that re-measurement — but its commits remain the record: `8e00e52` mapped the three fields, and `5e21205` added the per-field verification requirement in response.
 
-Cycle 3 mapped `country`, `city`, and `founded`. `schema_f1` rose `0.50 → 0.91`, tests passed, no regression fired, and a human approved it at Gate 2. Two of those three mappings do not work on the real data:
+That run's third cycle mapped `country`, `city`, and `founded`. `schema_f1` rose `0.50 → 0.91`, tests passed, no regression fired, and a human approved it at Gate 2. Two of those three mappings do not work on the real data:
 
 | Mapping | Normalizer | Real value | Result |
 |---|---|---|---|
@@ -109,7 +111,7 @@ Cycle 3 mapped `country`, `city`, and `founded`. `schema_f1` rose `0.50 → 0.91
 | `Attribute_3 → country` | `country_to_iso` | `""` | `ValueError` on the empty values the source actually carries |
 | `Attribute_4 → city` | `identity` | `"Brooklyn"` | works |
 
-`integrated_rate` stayed at `0.00` for all three cycles and said so the whole time. `fullcontact` genuinely has no column for `industry`, `assets`, or `revenue`, so full integration was out of reach regardless — which is exactly why that zero was easy to read as a known limit instead of a live signal.
+`integrated_rate` stayed at `0.00` in that run and in this one, and said so the whole time. `fullcontact` genuinely has no column for `industry`, `assets`, or `revenue`, so full integration was out of reach regardless — which is exactly why that zero was easy to read as a known limit instead of a live signal.
 
 **Why the metric moved anyway.** `schema_f1` scores the *declared correspondence* between source column and target attribute. That correspondence is correct: `Attribute_6` really is the founding date. Whether any record survives normalization is a different question, and `schema_f1` does not ask it. The change was scored on the half that was right.
 
@@ -117,7 +119,7 @@ Cycle 3 mapped `country`, `city`, and `founded`. `schema_f1` rose `0.50 → 0.91
 
 **What this is evidence of.** Three controls behaved exactly as designed and the combination still shipped a change that improves nothing: an oracle scoring a real property that was not the property that mattered, a test suite honestly describing a non-functional result, and a human gate reading both. This is the failure mode the whole repo exists to make visible, caught by the repo's own instrumentation on its hardest task. It is not an argument that the gates are worthless — it is the measured limit of what a gate can do when the number it is shown is answering an easier question than the one being asked.
 
-**What was built afterwards.** The evaluator now reports `field_yield`: per mapped target attribute, the share of records that actually produced a value. It was nearly free — `evaluate_source` already ran `apply_adapter` over every record and was discarding the per-field `value_normalization` failures it got back. Run against the same adapter that shipped:
+**What was built afterwards.** The evaluator now reports `field_yield`: per mapped target attribute, the share of records that actually produced a value. It was nearly free — `evaluate_source` already ran `apply_adapter` over every record and was discarding the per-field `value_normalization` failures it got back. Run against the adapter that shipped in `8e00e52`:
 
 | target | source | yield |
 |---|---|---|
@@ -129,7 +131,7 @@ Cycle 3 mapped `country`, `city`, and `founded`. `schema_f1` rose `0.50 → 0.91
 
 The property that makes yield the right primary signal is that **it needs no gold**. You do not have to know the correct mapping to know that a field you just declared produced a value in zero records, which means it works on the first day of an engagement, before any answer key exists. It also now drives regression detection, where it is the only signal that functions at all on the real splits: there `fully_correct_rate` is `None`, so the pre-existing check could never fire.
 
-Each cycle's delivery record now carries it per field, so the pairing is visible without anyone looking for it. Replaying cycle 3 through the current telemetry:
+Each cycle's delivery record now carries it per field, so the pairing is visible without anyone looking for it. Replaying that cycle through the current telemetry:
 
 ```
 fullcontact.field_yield.founded   None → 0.0     delta=None
@@ -139,6 +141,20 @@ fullcontact.schema_f1              0.8 → 0.9091  delta=0.1091
 A `null` before is "this field was not mapped at all", not "it was mapped and yielded zero" — the same distinction `value_recall` keeps on the real split, for the same reason.
 
 Its limit is the exact mirror of `schema_f1`'s, and worth stating plainly: yield says a field produced a value, not that the value belongs there. A column mapped to the wrong target with a working normalizer yields `1.0`. The two metrics answer different halves of the question and neither replaces the other — which is the actual lesson, rather than "we fixed it."
+
+**What the re-run measured.** The three cycles in the table above redid the split from the same empty adapter. Cycle 2 mapped the same three fields as `8e00e52` and reached the same `schema_f1` of `0.9091` — with `founded` at `1056 / 1931` instead of `0`, and `country` at `1421 / 1931` instead of `1200`. The difference is not a better model. A submission now has to carry a per-field trace of a real source value through its chosen normalizer, and a row whose result is an error is rejected before the tests run, so a mapping that normalizes nothing cannot be submitted without the agent writing down that it is dead. `founded` needed a new `iso_date_to_year` normalizer to land at all; `city` needed one that rejects `""` and the literal `"null"`, because `identity` would have reported `1.00` for a column that delivers a value in 71% of records.
+
+Final yields, each at the ceiling its source imposes:
+
+| target | source | yield | what caps it |
+|---|---|---|---|
+| `id`, `name` | `Attribute_1`, `_2` | 1931 / 1931 | nothing — always present |
+| `country` | `Attribute_3` | 1421 / 1931 | 508 empty, 2 `"Other"` |
+| `city` | `Attribute_4` | 1375 / 1931 | 464 empty, 92 literal `"null"` |
+| `founded` | `Attribute_6` | 1056 / 1931 | 875 empty |
+| `keypeople` | `Attribute_5` | 192 / 1931 | 1739 empty |
+
+`schema_f1` finished at `1.00` beside an `integrated_rate` of `0.00`. That pairing is the whole point: every column is now mapped to the attribute the answer key says it belongs to, and not one record onboards, because `fullcontact` carries no `industry`, `assets`, or `revenue` column at all. A complete mapping and a usable dataset are different things, and only one of the two metrics can tell them apart.
 
 ## What this engagement demonstrates
 
