@@ -1,0 +1,26 @@
+--- engagements/madi_onboarding/runs/real_fullcontact/01_cycle1.adapter.toml	2026-08-29 16:10:56
++++ engagements/madi_onboarding/runs/real_fullcontact/02_cycle2.adapter.toml	2026-08-29 16:25:01
+@@ -11,3 +11,23 @@
+ [fields.Attribute_2]
+ target = "name"
+ normalizer = "identity"
++
++# Attribute_3 is a country name ("United States", "Ireland", "Hong Kong"): 1423 of
++# 1931 records carry one, 508 are empty, and 2 hold the source's own catch-all
++# "Other". country_to_iso rejects both of those, so only the 1421 real ones count.
++[fields.Attribute_3]
++target = "country"
++normalizer = "country_to_iso"
++
++# Attribute_4 is a city, but 464 records are empty and 92 hold the four-character
++# string "null". identity would emit "null" as a city and report a yield of 1.0 on
++# a column that only has 1375 real values.
++[fields.Attribute_4]
++target = "city"
++normalizer = "non_placeholder_str"
++
++# Attribute_6 is a full ISO founding date ("1908-01-01") on 1056 records and empty
++# on the other 875 — never a bare year, which is the shape to_int_year parses.
++[fields.Attribute_6]
++target = "founded"
++normalizer = "iso_date_to_year"

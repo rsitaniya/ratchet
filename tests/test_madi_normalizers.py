@@ -64,6 +64,28 @@ def test_country_to_iso_bad(raw):
         n.country_to_iso(raw)
 
 
+@pytest.mark.parametrize("raw,expected", [("1908-01-01", 1908), ("1837-01-01", 1837), ("2006-01-01", 2006)])
+def test_iso_date_to_year_ok(raw, expected):
+    assert n.iso_date_to_year(raw) == expected
+
+
+@pytest.mark.parametrize("raw", ["", "null", "08-01-01", "not-a-date", None, 1908])
+def test_iso_date_to_year_bad(raw):
+    with pytest.raises(ValueError):
+        n.iso_date_to_year(raw)
+
+
+@pytest.mark.parametrize("raw,expected", [("Brooklyn", "Brooklyn"), ("Tel Aviv", "Tel Aviv")])
+def test_non_placeholder_str_ok(raw, expected):
+    assert n.non_placeholder_str(raw) == expected
+
+
+@pytest.mark.parametrize("raw", ["", "   ", "null", "NULL", None])
+def test_non_placeholder_str_bad(raw):
+    with pytest.raises(ValueError):
+        n.non_placeholder_str(raw)
+
+
 def test_identity_and_to_list():
     assert n.identity("Acme") == "Acme"
     with pytest.raises(ValueError):

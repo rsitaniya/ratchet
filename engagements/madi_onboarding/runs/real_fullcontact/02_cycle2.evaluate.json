@@ -1,0 +1,46 @@
+{
+  "per_source": {
+    "fullcontact": {
+      "source": "fullcontact",
+      "records": 1931,
+      "schema_f1": 0.9091,
+      "value_recall": null,
+      "integrated_rate": 0.0,
+      "fully_correct_rate": null,
+      "field_yield": {
+        "city": {
+          "source": "Attribute_4",
+          "produced": 1375,
+          "records": 1931,
+          "rate": 0.7121
+        },
+        "country": {
+          "source": "Attribute_3",
+          "produced": 1421,
+          "records": 1931,
+          "rate": 0.7359
+        },
+        "founded": {
+          "source": "Attribute_6",
+          "produced": 1056,
+          "records": 1931,
+          "rate": 0.5469
+        },
+        "id": {
+          "source": "Attribute_1",
+          "produced": 1931,
+          "records": 1931,
+          "rate": 1.0
+        },
+        "name": {
+          "source": "Attribute_2",
+          "produced": 1931,
+          "records": 1931,
+          "rate": 1.0
+        }
+      }
+    }
+  },
+  "regressions": [],
+  "regression": false
+}

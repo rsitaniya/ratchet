@@ -18,6 +18,21 @@ _COUNTRY_TO_ISO = {
     "germany": "DE", "india": "IN", "canada": "CA", "france": "FR",
     "japan": "JP", "china": "CN", "australia": "AU", "brazil": "BR",
     "netherlands": "NL", "spain": "ES", "italy": "IT", "sweden": "SE",
+    # Every remaining country name that occurs on the real fullcontact split.
+    "ireland": "IE", "switzerland": "CH", "hong kong": "HK", "taiwan": "TW",
+    "united arab emirates": "AE", "saudi arabia": "SA", "greece": "GR",
+    "turkey": "TR", "austria": "AT", "mexico": "MX", "south africa": "ZA",
+    "singapore": "SG", "argentina": "AR", "denmark": "DK", "israel": "IL",
+    "belgium": "BE", "indonesia": "ID", "colombia": "CO", "nigeria": "NG",
+    "finland": "FI", "russia": "RU", "malaysia": "MY", "norway": "NO",
+    "thailand": "TH", "south korea": "KR", "korea, north": "KP",
+    "bermuda": "BM", "philippines": "PH", "luxembourg": "LU", "portugal": "PT",
+    "pakistan": "PK", "kuwait": "KW", "greenland": "GL", "ukraine": "UA",
+    "serbia": "RS", "bangladesh": "BD", "croatia": "HR", "somalia": "SO",
+    "iran": "IR", "cyprus": "CY", "new zealand": "NZ", "chile": "CL",
+    "lithuania": "LT", "poland": "PL", "estonia": "EE", "albania": "AL",
+    "peru": "PE", "monaco": "MC", "czech republic": "CZ", "oman": "OM",
+    "bosnia and herzegovina": "BA", "bahrain": "BH",
 }
 _ISO_CODES = set(_COUNTRY_TO_ISO.values())
 
@@ -29,6 +44,21 @@ def identity(raw):
     return str(raw)
 
 
+def non_placeholder_str(raw):
+    """Pass a string through, rejecting a source's stand-ins for "no value".
+
+    Some sources write an empty string, or the literal text "null", where they
+    simply have nothing. identity() would emit those as if they were real values,
+    so a column that uses them needs this instead.
+    """
+    if raw is None:
+        raise ValueError("value is missing")
+    s = str(raw).strip()
+    if not s or s.lower() == "null":
+        raise ValueError(f"placeholder, not a value: {raw!r}")
+    return s
+
+
 def to_int_year(raw):
     """Parse a 4-digit year to int; reject implausible years."""
     try:
@@ -38,6 +68,20 @@ def to_int_year(raw):
     if not (1000 <= year <= 2100):
         raise ValueError(f"year out of range: {year}")
     return year
+
+
+def iso_date_to_year(raw):
+    """Take the year out of an ISO calendar date: "1908-01-01" -> 1908.
+
+    A source that stores a founding *date* rather than a year needs this;
+    to_int_year parses a bare year and rejects the full date shape.
+    """
+    if not isinstance(raw, str):
+        raise ValueError(f"not an ISO date: {raw!r}")
+    head = raw.strip().split("-", 1)[0]
+    if len(head) != 4:
+        raise ValueError(f"not an ISO date: {raw!r}")
+    return to_int_year(head)
 
 
 def currency_to_usd(raw):
@@ -87,7 +131,9 @@ def to_list(raw):
 
 _REGISTRY = {
     "identity": identity,
+    "non_placeholder_str": non_placeholder_str,
     "to_int_year": to_int_year,
+    "iso_date_to_year": iso_date_to_year,
     "currency_to_usd": currency_to_usd,
     "country_to_iso": country_to_iso,
     "to_list": to_list,
