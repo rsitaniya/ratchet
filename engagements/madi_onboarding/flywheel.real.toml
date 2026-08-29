@@ -35,6 +35,10 @@ paths = [
     "**/flywheel.toml", "**/flywheel.real.toml",
     "scripts/**",
     ".claude/**",
+    # Receipts are the evidence a reviewer checks, so the implementer must not be
+    # able to author one. It already cannot READ these (unreadable, below); without
+    # this it could still CREATE a file here and the guard would bless it.
+    "**/runs/**",
     "**/prepare_real_eval.py",
     "**/data/madi/**",
 ]

@@ -171,6 +171,36 @@ jobs:
             echo "correctly rejected: $p"
           done
 
+      # runs/ holds the receipts every published number is derived from, so the
+      # implementer must not be able to author one. This was write-open in all
+      # three configs for a release while CLAUDE.md and the dev-loop skill both
+      # said it was protected -- read-denied but write-allowed, the wrong way
+      # round for an evidence directory. Assert the write boundary under EVERY
+      # config, not just the default one.
+      - name: Receipts under runs/ are write-protected in every config
+        run: |
+          set -e
+          python3 -c "
+          import json
+          json.dump([{'file': 'engagements/madi_onboarding/runs/real_fullcontact/99_forged.evaluate.json', 'old_string': '', 'new_string': '{}'}], open('/tmp/forged_receipt.json', 'w'))
+          json.dump([{'file': 'engagements/madi_onboarding/adapters_real/fullcontact.toml', 'old_string': 'x', 'new_string': 'y'}], open('/tmp/legit_adapter.json', 'w'))
+          "
+          for cfg in engagements/madi_onboarding/flywheel.toml \
+                     engagements/madi_onboarding/flywheel.real.toml \
+                     engagements/madi_onboarding/flywheel.real_fullcontact.toml; do
+            if FLYWHEEL_CONFIG=$cfg uv run python scripts/check_protected_paths.py /tmp/forged_receipt.json; then
+              echo "ERROR: $cfg would let the implementer author a receipt under runs/"; exit 1
+            fi
+            echo "correctly rejected under $cfg"
+          done
+          # The guard must still pass the file the loop actually exists to edit,
+          # or "protected" has just become "nothing can be changed".
+          if ! FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.real_fullcontact.toml \
+               uv run python scripts/check_protected_paths.py /tmp/legit_adapter.json; then
+            echo "ERROR: the guard now rejects a legitimate adapter edit"; exit 1
+          fi
+          echo "legitimate adapter edit still allowed"
+
       # The implementer's READ boundary, exercised the way it would be attacked.
       # A guard that only rejects a direct read of a gold file is theatre: the
       # case that matters is reaching held-out material through a parent
