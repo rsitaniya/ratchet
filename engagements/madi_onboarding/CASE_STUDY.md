@@ -205,19 +205,29 @@ usable value for all eight at once. Even the richest real source is 96% incomple
 at the record level, which is a fact about the benchmark that no metric here
 previously reported.
 
-**What this harness does not evaluate, and will not pretend to.** The fused entity
-is the thing MaDI's required list describes, and completeness is a cross-source
-property: a company complete in neither `forbes` nor `fullcontact` may well be
-complete once the two are matched and fused. This harness does not measure that on
-real data, and cannot. `download_data.py` pins Stage 1 only — the three CSVs, the
-target schema, and the schema-matching gold. No entity-matching gold and no fusion
-gold are published for the real sources, so there is nothing to score a fused record
-against. `evaluate_reconcile` does score matching and fusion, but against the
-synthetic `reconcile` fixtures alone; the real-split evaluator emits no `reconcile`
-key at all. Real-data fused completeness is therefore out of scope for this
-engagement, not merely unachieved by it — and `integrated_rate` on a real split
-should be read as an ingest-stage coverage number with a stated ceiling, never as an
+**What this harness does not yet evaluate.** The fused entity is the thing MaDI's
+required list describes, and completeness is a cross-source property: a company
+complete in neither `forbes` nor `fullcontact` may well be complete once the two are
+matched and fused. This harness does not measure that on real data today.
+`download_data.py` pins Stage 1 only — the three CSVs, the target schema, and the
+schema-matching gold — and `evaluate_reconcile` scores matching and fusion against
+the synthetic `reconcile` fixtures alone, so the real-split evaluator emits no
+`reconcile` key at all. Until it does, `integrated_rate` on a real split should be
+read as an ingest-stage coverage number with a stated ceiling, never as an
 integration score.
+
+That is a limit of what this harness pins, **not** a limit of the benchmark. An
+earlier version of this paragraph claimed no entity-matching or fusion gold was
+published for the real sources, and that was wrong — the claim was inferred from
+`download_data.py`'s manifest instead of checked against MaDI-Bench, and it shipped.
+Both golds exist upstream under `use cases/companies/base/input/`:
+`entitymatching/forbes_2_{fullcontact,dbpedia}_{all,train,val,test}.csv` carries
+labelled record pairs (`left_id,right_id,label`), and `fusion/{test,validation}_set.xml`
+carries hand-annotated fused records, with a `*_better_readability.csv` view whose
+columns are exactly the target schema. The pair ids are ones this loop already
+produces — `fullcontact_467` is `Attribute_1`, mapped to `id` in cycle 1. Scoring
+real matching and fusion is therefore available work, not an impossibility, and it is
+the route by which fused completeness becomes measurable.
 
 ## What this engagement demonstrates
 
