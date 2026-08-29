@@ -1,0 +1,21 @@
+source = "fullcontact"
+
+[fields.Attribute_1]
+target = "id"
+normalizer = "identity"
+
+[fields.Attribute_2]
+target = "name"
+normalizer = "identity"
+
+[fields.Attribute_3]
+target = "country"
+normalizer = "country_to_iso"
+
+[fields.Attribute_4]
+target = "city"
+normalizer = "non_empty_text"
+
+[fields.Attribute_6]
+target = "founded"
+normalizer = "iso_date_to_year"

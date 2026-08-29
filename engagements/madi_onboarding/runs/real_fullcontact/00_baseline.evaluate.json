@@ -1,0 +1,13 @@
+{
+  "per_source": {
+    "fullcontact": {
+      "source": "fullcontact",
+      "records": 1931,
+      "schema_f1": 0.0,
+      "value_recall": null,
+      "integrated_rate": 0.0,
+      "fully_correct_rate": null,
+      "field_yield": {}
+    }
+  }
+}

@@ -1,0 +1,13 @@
+--- engagements/madi_onboarding/runs/real_fullcontact_unattended/02_cycle2.adapter.toml	2026-08-29 15:58:43
++++ engagements/madi_onboarding/runs/real_fullcontact_unattended/03_cycle3.adapter.toml	2026-08-29 15:58:43
+@@ -16,6 +16,10 @@
+ target = "city"
+ normalizer = "non_empty_text"
+ 
++[fields.Attribute_5]
++target = "keypeople"
++normalizer = "to_text_list"
++
+ [fields.Attribute_6]
+ target = "founded"
+ normalizer = "iso_date_to_year"

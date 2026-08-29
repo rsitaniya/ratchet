@@ -1,0 +1,26 @@
+{
+  "per_source": {
+    "fullcontact": {
+      "source": "fullcontact",
+      "records": 1931,
+      "schema_f1": 0.5,
+      "value_recall": null,
+      "integrated_rate": 0.0,
+      "fully_correct_rate": null,
+      "field_yield": {
+        "id": {
+          "source": "Attribute_1",
+          "produced": 1931,
+          "records": 1931,
+          "rate": 1.0
+        },
+        "name": {
+          "source": "Attribute_2",
+          "produced": 1931,
+          "records": 1931,
+          "rate": 1.0
+        }
+      }
+    }
+  }
+}
