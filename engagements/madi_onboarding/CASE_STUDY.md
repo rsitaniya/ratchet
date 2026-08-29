@@ -52,11 +52,13 @@ The synthetic dev split makes every cycle fast and reproducible. It cannot answe
 
 The real `forbes` export has 2,000 records and seven raw fields with no names shared with the synthetic fixture. Its schema-mapping gold is separate. Value gold is unavailable, so value recall and fully-correct rate remain `null`; the meaningful metric is schema-mapping F1.
 
-Five auto-gated trials started from the empty real-data adapter. Every trial converged in one cycle to schema F1 `1.00`, with no regression and two evaluator invocations per trial. The [trial report](runs/trials/README.md) records the full protocol and each result.
+Five auto-gated trials started from the empty real-data adapter. Every trial converged in one cycle to schema F1 `1.00`, with no regression and two evaluator invocations per trial. The [trial report](runs/trials/README.md) records the full protocol and each result — but both gates were auto-answered and every run reverted, so it measures whether the implementer converges, not whether a reviewed change is correct.
+
+The stronger evidence is two human-gated `/dev-loop` cycles on the same real `forbes` split, receipted the same way as `fullcontact` below: `schema_f1` `0.00 → 0.67 → 0.80`, mapping `name`, `assets`, `revenue`, then `id`. The second cycle corrected a wrong claim its own predecessor's adapter comment made — that `id` could never be mapped because of a mapping-engine detail — by probing the held-out evaluator with a candidate mapping before writing any code, the same kind of check the "evaluator could not see" section below argues for. Per-cycle receipts are in [`runs/real_forbes/`](runs/real_forbes/README.md); `country` and `industry` remain unmapped by a human-gated cycle even though the trial above found them (`region → country`, `business_segment → industry`) — the trial's `1.00` is not yet confirmed by review.
 
 The current handoff uses structured `{file, old_string, new_string}` edits. `apply_edits.py` validates each target path and exact prior string before any write occurs. One bad edit rejects the whole submission. This removes diff hunk bookkeeping from the implementer’s task.
 
-The real-data trial is a bounded result. The source mapping has low ambiguity. Five successes do not establish general agent reasoning ability, broad reliability, or production readiness.
+Both the real-data trial and the real-data cycles are bounded results. The source mapping has low ambiguity. Neither five trial successes nor two reviewed cycles establish general agent reasoning ability, broad reliability, or production readiness.
 
 ## What the loop costs
 
@@ -243,7 +245,7 @@ the route by which fused completeness becomes measurable.
 ## Limits
 
 - Synthetic stages contain 6–7 records. They establish reproducibility, not scale or commercial impact.
-- The real-data trial measures one low-ambiguity mapping source. It does not measure customer value or general agent capability.
+- The real-data trial and the real `forbes` cycles both measure one low-ambiguity mapping source. Neither measures customer value or general agent capability.
 - The matching implementation is fixture-scale. Production entity resolution needs blocking, operational limits, monitoring, and recovery controls.
 - “Correct” means agreement with the available benchmark gold. It does not measure adoption, latency, or business value.
 - A tool-call hook and a write guard enforce the documented implementer’s boundary. A user or orchestrator with broader grants can change either.
@@ -251,4 +253,4 @@ the route by which fused completeness becomes measurable.
 
 ## Inspect or reproduce
 
-Start with the [local runbook](../../SETUP.md). Read the [receipt index](runs/MADI_EXAMPLE.md) for the synthetic cycles, the [real-data baseline](runs/real_forbes/README.md) for the separate split, and the [trial report](runs/trials/README.md) for the convergence measurement.
+Start with the [local runbook](../../SETUP.md). Read the [receipt index](runs/MADI_EXAMPLE.md) for the synthetic cycles, the [real `forbes` receipts](runs/real_forbes/README.md) and [real `fullcontact` receipts](runs/real_fullcontact/README.md) for the two real-data splits, and the [trial report](runs/trials/README.md) for the convergence measurement.

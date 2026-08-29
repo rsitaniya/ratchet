@@ -118,11 +118,12 @@ permanently would remove the thing the case study demonstrates.
 against the shipped (empty) adapter — Gate 1 and Gate 2 walk the same two cycles
 these receipts record, live, with the evaluator run for real at each Gate 2.
 
-## Real-data test split: forbes baseline
+## Real-data test split: forbes
 
 `runs/real_forbes/` — the same mechanism, run against MaDI-Bench's own forbes CSV (2000 records)
 and its own schema-matching gold instead of the synthetic fixtures above, selected by
-`FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.real.toml`. Scored once, offline, as the
-held-out test split — never during a loop cycle. See
+`FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.real.toml`. Two human-gated `/dev-loop`
+cycles have landed on it (`schema_f1` `0.0 → 0.6667 → 0.8`), each scoring the held-out
+evaluator for real at Gate 2, the same as the synthetic cycles above. See
 [runs/real_forbes/README.md](real_forbes/README.md) and the case study's
-[real-data test split section](../CASE_STUDY.md#extension-the-real-data-test-split).
+[separate real-data measurement section](../CASE_STUDY.md#separate-real-data-measurement).

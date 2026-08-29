@@ -17,7 +17,7 @@ module = "engagements.madi_onboarding.app.main:app"
 base_url = "http://localhost:8000"
 usage_log = "usage_log_real.jsonl"                 # → engagements/madi_onboarding/usage_log_real.jsonl
 target_schema = "data/madi/target_schema.json"     # real MaDI target schema, not the synthetic one
-adapters_dir = "adapters_real"                     # separate write surface — starts empty, like adapters/forbes.toml
+adapters_dir = "adapters_real"                     # separate write surface from synthetic adapters/ — see runs/real_forbes/README.md for onboarding progress
 evaluator = "python engagements/madi_onboarding/evaluate.py --fixtures engagements/madi_onboarding/data/madi --adapters engagements/madi_onboarding/adapters_real --sources forbes"
 analyzer = "python engagements/madi_onboarding/analyze_integration.py --source forbes"
 

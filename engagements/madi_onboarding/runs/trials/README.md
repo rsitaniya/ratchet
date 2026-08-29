@@ -4,10 +4,10 @@
 
 These are measurement runs. Both gates were auto-answered, every run started from the committed empty `adapters_real/forbes.toml`, and the tree was reverted afterwards. They are not human-approved delivery cycles.
 
-**This is the weakest real-data evidence in the repo, and deliberately so.** Read it after the [three human-gated `fullcontact` cycles](../delivery/cycles.jsonl), not before. Two things separate them:
+**This is the weakest real-data evidence in the repo, and deliberately so.** Read it after the human-gated cycles — [three on `fullcontact`](../real_fullcontact/README.md), [two on real `forbes`](../real_forbes/README.md) — not before. Two things separate them:
 
-- **Difficulty.** Forbes' columns self-describe (`company`, `region`, `asset_value`), so the mapping is largely readable off the header row. `fullcontact`'s are anonymized to `Attribute_1..6`, so the mapping has to come from record values. Five successes here say little about the harder case.
-- **Receipts.** A trial reverts the tree by design — that is what makes it repeatable from a fixed baseline — so there is no landed state to commit and the table below is a hand-recorded summary, not a reproducible artifact. The `fullcontact` cycles are committed records that CI recomputes. Where the two disagree about what the loop can do, the receipted run is the one that counts.
+- **Difficulty.** Forbes' columns self-describe (`company`, `region`, `asset_value`), so the mapping is largely readable off the header row. `fullcontact`'s are anonymized to `Attribute_1..6`, so the mapping has to come from record values. Five successes here say little about the harder case, and the real `forbes` human-gated cycles only landed 4 of the 6 mappings below — `region → country` and `business_segment → industry` remain unreviewed, so this trial's `1.0` is not yet confirmed by a human-gated run.
+- **Receipts.** A trial reverts the tree by design — that is what makes it repeatable from a fixed baseline — so there is no landed state to commit and the table below is a hand-recorded summary, not a reproducible artifact. The `fullcontact` and real `forbes` cycles are committed records that CI recomputes. Where a trial and a receipted cycle disagree about what the loop can do, the receipted run is the one that counts.
 
 ## Protocol
 
@@ -68,4 +68,4 @@ uv run python engagements/madi_onboarding/csv_to_ingest.py --source forbes
 uv run python engagements/madi_onboarding/prepare_real_eval.py
 ```
 
-Then run `.claude/skills/dev-loop-trial/` with a chosen run count and cycle cap. Read the [real-data baseline](../real_forbes/README.md) first.
+Then run `.claude/skills/dev-loop-trial/` with a chosen run count and cycle cap. Read [the real `forbes` human-gated run](../real_forbes/README.md) first.

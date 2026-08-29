@@ -42,7 +42,7 @@ The synthetic MaDI fixtures are the development split. They are small, determini
 
 The real MaDI-Bench configuration uses separate raw data, schema gold, and `adapters_real/` write surface. It measures a mapping against a distribution whose source columns do not overlap with the synthetic source. The trial harness records evaluator invocations, so oracle use is observable.
 
-The real-data measurement is intentionally narrow: five auto-gated runs reach the target on one low-ambiguity mapping task. It is evidence about this harness. It is not a general reliability claim.
+The real-data measurement is intentionally narrow: five auto-gated trial runs reach the target on one low-ambiguity mapping task, and a separate set of human-gated `/dev-loop` cycles has landed reviewed changes on two real splits (`fullcontact`, `forbes`). It is evidence about this harness. It is not a general reliability claim.
 
 ### 5. Keep acceptance attributable
 
@@ -50,7 +50,7 @@ Gate 1 approves the work’s scope. Gate 2 approves the exact tested result. The
 
 ### 6. Measure what the control costs
 
-Two human gates are a throughput claim, and a throughput claim needs a number. Each cycle writes one delivery record: wall-clock per phase, human time at each gate, the outcome, resubmissions, submission size, evaluator invocations, and the metric deltas. From accumulated cycles the loop reports acceptance rate, first-pass rate, and human and wall minutes per accepted change.
+Two human gates are a throughput claim, and a throughput claim needs a number. Each cycle writes one delivery record: wall-clock per phase, the outcome, resubmissions, submission size, evaluator invocations, and the metric deltas. From accumulated cycles the loop reports acceptance rate, first-pass rate, and agent and wall minutes per accepted change — not a separate human-time figure: a gate span runs from the previous phase mark to the human's answer, so it also contains the orchestrator composing proposals or rendering the diff, and nothing marks the boundary between the two. A "human minutes" number derived from that span would be agent time wearing a human label.
 
 A control that fires is recorded distinctly from a human declining. `regression-blocked`, `guard-rejected`, `validation-failed`, and `tests-failed` are separate outcomes from `reverted`, because collapsing them would overstate human workload and hide whether the controls do anything.
 

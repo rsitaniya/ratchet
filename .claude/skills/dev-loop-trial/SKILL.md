@@ -40,10 +40,15 @@ agent (or this skill's author) could have seen it.
    `[ -n "$FLYWHEEL_CONFIG" ]` in a Bash call that exports nothing first. If it
    is unset, exit and relaunch as
    `export FLYWHEEL_CONFIG=... && claude`.
-3. `engagements/madi_onboarding/adapters_real/forbes.toml` must be at its
-   checked-in empty baseline (`source = "forbes"` with no `[fields.*]`
-   entries) — every trial starts from the same point, or the convergence rate
-   is not comparable across trials.
+3. `engagements/madi_onboarding/adapters_real/forbes.toml` must be at an empty
+   baseline (`source = "forbes"` with no `[fields.*]` entries) before the
+   first trial starts — every trial starts from the same point, or the
+   convergence rate is not comparable across trials. **This is no longer the
+   checked-in state**: `/dev-loop` has since landed real mappings into this
+   file (see `runs/real_forbes/README.md`), so write the empty stub explicitly
+   and confirm with `git diff` that only this file changed before starting.
+   Never commit the emptied file — restore it at the end (see "After all N
+   trials").
 4. The preconditions in `flywheel.real.toml`'s own header comment
    (`download_data.py`, `csv_to_ingest.py --source forbes`,
    `prepare_real_eval.py`) must already have been run, so
@@ -177,12 +182,22 @@ implementer try to touch something it shouldn't), an edit-validation failure is
 a mechanical-reliability signal (did its edit actually apply). Conflating them
 would hide which one an anomalous trial is actually telling you about.
 
-Then unconditionally restore the pre-trial tree, so the next trial starts
-from the same empty `adapters_real/forbes.toml`:
+Then unconditionally restore the pre-trial tree. **`git checkout -- .` alone is
+no longer enough**: HEAD's `adapters_real/forbes.toml` now carries the real
+mappings `/dev-loop` landed, so checking out HEAD would start the next trial
+from that non-empty state instead of empty. Re-apply the empty stub from
+precondition 3 after the checkout, every time:
 
 ```bash
 git checkout -- .
 git clean -fd -- engagements/madi_onboarding/adapters_real tests/
+# HEAD's forbes.toml is no longer empty — re-write the stub so the next trial
+# still starts from the same empty point precondition 3 established.
+cat > engagements/madi_onboarding/adapters_real/forbes.toml <<'EOF'
+source = "forbes"
+
+[fields]
+EOF
 ```
 
 Evaluator invocations, cycle durations, resubmissions, and control stops are
@@ -196,6 +211,16 @@ uv run python scripts/cycle_log.py report
 ---
 
 ## After all N trials
+
+**Restore the real committed mappings first.** The per-trial reset above leaves
+the empty stub in the working tree, not HEAD's actual `adapters_real/forbes.toml`
+(which carries the mappings landed by `/dev-loop` — see
+`runs/real_forbes/README.md`). Before doing anything else:
+
+```bash
+git checkout -- engagements/madi_onboarding/adapters_real/forbes.toml
+git status --porcelain   # must be empty again
+```
 
 Write `engagements/madi_onboarding/runs/trials/README.md`: convergence rate
 (converged / N), the cycles-to-converge distribution, final schema-F1 per
