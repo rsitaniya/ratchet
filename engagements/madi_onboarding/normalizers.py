@@ -8,6 +8,8 @@ code. Only a genuinely new normalizer is a code change.
 """
 from __future__ import annotations
 
+import ast
+
 _MAGNITUDES = {"K": 1_000, "M": 1_000_000, "B": 1_000_000_000, "T": 1_000_000_000_000}
 
 # A small, extensible country-name → ISO 3166-1 alpha-2 table. New entries are a
@@ -129,6 +131,34 @@ def to_list(raw):
     return [raw]
 
 
+def to_name_list(raw):
+    """Parse a people column into a list of names.
+
+    A source can print this column two ways: one name as plain text, and a Python
+    list rendered back into a string ("['Steve Jobs', 'Steve Wozniak']"). to_list
+    keeps that second shape as one long name and accepts the empty string, so a
+    column carrying both shapes needs this instead. Names are never split on a
+    comma: a plain value's comma belongs to the name ("Anand Bhaskar, PCC").
+    """
+    if not isinstance(raw, str):
+        raise ValueError(f"not a name value: {raw!r}")
+    s = raw.strip()
+    if not s or s.lower() == "null":
+        raise ValueError(f"placeholder, not a value: {raw!r}")
+    if not s.startswith("["):
+        return [s]
+    try:
+        parsed = ast.literal_eval(s)
+    except (SyntaxError, ValueError):
+        raise ValueError(f"not a printed list: {raw!r}") from None
+    if not isinstance(parsed, list):
+        raise ValueError(f"not a printed list: {raw!r}")
+    names = [str(v).strip() for v in parsed if str(v).strip()]
+    if not names:
+        raise ValueError(f"printed list holds no names: {raw!r}")
+    return names
+
+
 _REGISTRY = {
     "identity": identity,
     "non_placeholder_str": non_placeholder_str,
@@ -137,6 +167,7 @@ _REGISTRY = {
     "currency_to_usd": currency_to_usd,
     "country_to_iso": country_to_iso,
     "to_list": to_list,
+    "to_name_list": to_name_list,
 }
 
 

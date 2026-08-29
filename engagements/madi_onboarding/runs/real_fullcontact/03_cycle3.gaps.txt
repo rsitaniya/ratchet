@@ -1,0 +1,11 @@
+── Integration status by source ────────────────────────
+  fullcontact    0/1931 integrated (0.0%)
+
+── Top integration gaps (rank by affected records) ─────
+  1931 records  MISSING_REQUIRED_FIELD fullcontact.industry
+  1931 records  MISSING_REQUIRED_FIELD fullcontact.assets
+  1931 records  MISSING_REQUIRED_FIELD fullcontact.revenue
+  1739 records  INVALID_VALUE_FORMAT   fullcontact.Attribute_5
+   875 records  INVALID_VALUE_FORMAT   fullcontact.Attribute_6
+   556 records  INVALID_VALUE_FORMAT   fullcontact.Attribute_4
+   510 records  INVALID_VALUE_FORMAT   fullcontact.Attribute_3

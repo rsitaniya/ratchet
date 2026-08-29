@@ -1,0 +1,18 @@
+--- engagements/madi_onboarding/runs/real_fullcontact/02_cycle2.adapter.toml	2026-08-29 16:25:01
++++ engagements/madi_onboarding/runs/real_fullcontact/03_cycle3.adapter.toml	2026-08-29 16:37:20
+@@ -26,6 +26,15 @@
+ target = "city"
+ normalizer = "non_placeholder_str"
+ 
++# Attribute_5 holds people's names in two shapes: 120 records carry one name as
++# plain text and 72 carry a printed Python list ("['Ron Wayne', 'Steve Jobs',
++# 'Steve Wozniak']"); the other 1739 are empty. to_list would accept the empty
++# string and keep a printed list as one long name, so this column needs
++# to_name_list. keypeople is the one target the real schema marks optional.
++[fields.Attribute_5]
++target = "keypeople"
++normalizer = "to_name_list"
++
+ # Attribute_6 is a full ISO founding date ("1908-01-01") on 1056 records and empty
+ # on the other 875 — never a bare year, which is the shape to_int_year parses.
+ [fields.Attribute_6]

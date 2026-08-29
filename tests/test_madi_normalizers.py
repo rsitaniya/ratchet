@@ -92,3 +92,26 @@ def test_identity_and_to_list():
         n.identity(None)
     assert n.to_list("Dana Reyes") == ["Dana Reyes"]
     assert n.to_list(["A", "B"]) == ["A", "B"]
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("Raphael Bemporad", ["Raphael Bemporad"]),
+    ("Anand Bhaskar, PCC", ["Anand Bhaskar, PCC"]),
+    ("['Ron Wayne', 'Steve Jobs', 'Steve Wozniak']", ["Ron Wayne", "Steve Jobs", "Steve Wozniak"]),
+    ("['Judy Müller-Cohn', 'Rolf Müller']", ["Judy Müller-Cohn", "Rolf Müller"]),
+])
+def test_to_name_list_ok(raw, expected):
+    assert n.to_name_list(raw) == expected
+
+
+@pytest.mark.parametrize("raw", ["", "   ", "null", None, 42, "[]", "['  ']", "['Ron Wayne', 'Steve"])
+def test_to_name_list_bad(raw):
+    with pytest.raises(ValueError):
+        n.to_name_list(raw)
+
+
+def test_to_list_still_keeps_a_printed_list_as_one_value():
+    # dbpedia's key_people column maps through to_list; to_name_list is additive
+    # and must not change what that source already gets.
+    assert n.to_list("['Ron Wayne', 'Steve Jobs']") == ["['Ron Wayne', 'Steve Jobs']"]
+    assert n.to_list("") == [""]
