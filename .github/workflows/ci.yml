@@ -476,7 +476,22 @@ jobs:
           log = Path("engagements/madi_onboarding/runs/delivery/cycles.jsonl")
           records = [json.loads(l) for l in log.read_text().splitlines() if l.strip()]
           s = summarize(records)
-          f1 = [r["metrics"]["fullcontact.schema_f1"] for r in records]
+
+          # Every config appends to this one log, because cost per accepted change
+          # is a property of the loop and splitting the file would split that
+          # sample. Metric keys are already source-namespaced, so a per-source
+          # claim is derived by grouping rather than by hardcoding one source.
+          paths: dict[str, list[dict]] = {}
+          for r in records:
+              for key, m in (r.get("metrics") or {}).items():
+                  if key.endswith(".schema_f1"):
+                      paths.setdefault(key[: -len(".schema_f1")], []).append(m)
+          if not paths:
+              raise SystemExit("ERROR: no schema_f1 metric in any committed record")
+          rendered = {
+              src: " → ".join([f"{ms[0]['before']:.2f}"] + [f"{m['after']:.2f}" for m in ms])
+              for src, ms in paths.items()
+          }
 
           # (what the line is about, the only value it may quote). A label with no
           # figure on its line is a legend and exempt; a label WITH a figure is
@@ -486,8 +501,6 @@ jobs:
                str(s["agent_minutes_per_accepted"])),
               ("wall minutes",   re.compile(r"wall\s+min(?:ute)?s?", re.I),
                str(s["wall_minutes_per_accepted"])),
-              ("schema_f1 path", re.compile(r"schema_f1`?\s*`?[\d.]+\s*→", re.I),
-               " → ".join([f"{f1[0]['before']:.2f}"] + [f"{m['after']:.2f}" for m in f1])),
           )
           has_figure = re.compile(r"\d+\.\d+")
           doc = Path("README.md")
@@ -501,6 +514,26 @@ jobs:
               for n, line in enumerate(text.splitlines(), 1):
                   if label.search(line) and has_figure.search(line) and value not in line:
                       problems.append(f"README:{n} quotes a figure for {name} that is not {value!r}")
+
+          # schema_f1 is a per-source convergence story, not a loop-wide figure. A
+          # line naming one source must quote that source's path; a line naming
+          # none must quote some source's. Without the first rule a second source
+          # could be introduced under the first one's numbers.
+          f1_line = re.compile(r"schema_f1`?\s*`?[\d.]+\s*→", re.I)
+          stated = False
+          for n, line in enumerate(text.splitlines(), 1):
+              if not f1_line.search(line):
+                  continue
+              stated = True
+              named = [src for src in rendered if src in line]
+              expected = [rendered[src] for src in named] if named else list(rendered.values())
+              if not any(e in line for e in expected):
+                  which = f"{named[0]}'s" if len(named) == 1 else "any source's"
+                  problems.append(f"README:{n} quotes a schema_f1 path that is not {which} ({expected!r})")
+          if not stated:
+              problems.append(
+                  f"README no longer states a schema_f1 path at all (expected one of {list(rendered.values())!r})"
+              )
 
           # The gate spans contain orchestrator work as well as an operator, so no
           # human-time figure is derivable here. Catch a *claim*, not a discussion
