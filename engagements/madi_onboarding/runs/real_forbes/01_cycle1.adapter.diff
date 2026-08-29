@@ -1,0 +1,33 @@
+--- engagements/madi_onboarding/runs/real_forbes/00_baseline.adapter.toml
++++ engagements/madi_onboarding/runs/real_forbes/01_cycle1.adapter.toml
+@@ -6,3 +6,30 @@
+ source = "forbes"
+ 
+ [fields]
++
++# Columns are anonymized elsewhere in this repo, but forbes' own column names
++# already describe the values; checked across all 2000 records, none empty.
++
++# company is the firm's name on every record ("ICBC", "JPMorgan Chase", ...).
++[fields.company]
++target = "name"
++normalizer = "identity"
++
++# asset_value is a plain numeric string, no currency symbol or magnitude suffix
++# ("3124900000000"); currency_to_usd's plain-number path parses it directly.
++[fields.asset_value]
++target = "assets"
++normalizer = "currency_to_usd"
++
++# sales_figure is the same plain numeric shape ("148700000000").
++[fields.sales_figure]
++target = "revenue"
++normalizer = "currency_to_usd"
++
++# id is NOT mapped here. The raw forbes records carry no natural identifier
++# (only a URL slug); to_replay.py assigns "forbes-<n>" under the literal key
++# "record_id" before /ingest sees it, and adapters.py's apply_adapter() skips
++# any field literally named "record_id" unconditionally, before ever consulting
++# this adapter's [fields] map. A [fields.record_id] entry here would never
++# execute — confirmed by reading apply_adapter()'s loop, not assumed. Mapping
++# id would require a change to the mapping engine itself, out of scope here.

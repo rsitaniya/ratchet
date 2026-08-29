@@ -1,0 +1,45 @@
+{
+  "per_source": {
+    "forbes": {
+      "source": "forbes",
+      "records": 2000,
+      "schema_f1": 0.8,
+      "value_recall": null,
+      "integrated_rate": 0.0,
+      "integrated_ceiling": 0.0,
+      "unsatisfiable_required": [
+        "city",
+        "founded"
+      ],
+      "fully_correct_rate": null,
+      "field_yield": {
+        "assets": {
+          "source": "asset_value",
+          "produced": 2000,
+          "records": 2000,
+          "rate": 1.0
+        },
+        "id": {
+          "source": "forbes_url",
+          "produced": 2000,
+          "records": 2000,
+          "rate": 1.0
+        },
+        "name": {
+          "source": "company",
+          "produced": 2000,
+          "records": 2000,
+          "rate": 1.0
+        },
+        "revenue": {
+          "source": "sales_figure",
+          "produced": 2000,
+          "records": 2000,
+          "rate": 1.0
+        }
+      }
+    }
+  },
+  "regressions": [],
+  "regression": false
+}

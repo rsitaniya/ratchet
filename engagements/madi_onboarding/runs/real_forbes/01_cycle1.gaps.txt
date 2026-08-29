@@ -1,0 +1,13 @@
+── Integration status by source ────────────────────────
+  forbes         0/300 integrated (0.0%)
+
+── Top integration gaps (rank by affected records) ─────
+   300 records  UNMAPPED_FIELD         forbes.forbes_url
+   300 records  UNMAPPED_FIELD         forbes.url
+   300 records  UNMAPPED_FIELD         forbes.region
+   300 records  UNMAPPED_FIELD         forbes.business_segment
+   300 records  MISSING_REQUIRED_FIELD forbes.id
+   300 records  MISSING_REQUIRED_FIELD forbes.founded
+   300 records  MISSING_REQUIRED_FIELD forbes.country
+   300 records  MISSING_REQUIRED_FIELD forbes.city
+   300 records  MISSING_REQUIRED_FIELD forbes.industry
