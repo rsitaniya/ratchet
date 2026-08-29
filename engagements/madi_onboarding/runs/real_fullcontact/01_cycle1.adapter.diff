@@ -1,0 +1,17 @@
+--- engagements/madi_onboarding/runs/real_fullcontact/00_baseline.adapter.toml	2026-08-29 16:00:32
++++ engagements/madi_onboarding/runs/real_fullcontact/01_cycle1.adapter.toml	2026-08-29 16:10:56
+@@ -1,3 +1,13 @@
+ source = "fullcontact"
+ 
+-[fields]
++# Columns are anonymized, so each mapping is justified by the values, not the name.
++# Attribute_1 is a per-record "fullcontact_<n>" key; Attribute_2 is the company
++# name. Both are non-empty on all 1931 records, so identity normalizes every one.
++
++[fields.Attribute_1]
++target = "id"
++normalizer = "identity"
++
++[fields.Attribute_2]
++target = "name"
++normalizer = "identity"

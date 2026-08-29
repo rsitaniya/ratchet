@@ -1,0 +1,18 @@
+── Integration status by source ────────────────────────
+  fullcontact    0/1931 integrated (0.0%)
+
+── Top integration gaps (rank by affected records) ─────
+  1931 records  UNMAPPED_FIELD         fullcontact.Attribute_1
+  1931 records  UNMAPPED_FIELD         fullcontact.Attribute_2
+  1931 records  UNMAPPED_FIELD         fullcontact.Attribute_3
+  1931 records  UNMAPPED_FIELD         fullcontact.Attribute_4
+  1931 records  UNMAPPED_FIELD         fullcontact.Attribute_5
+  1931 records  UNMAPPED_FIELD         fullcontact.Attribute_6
+  1931 records  MISSING_REQUIRED_FIELD fullcontact.id
+  1931 records  MISSING_REQUIRED_FIELD fullcontact.name
+  1931 records  MISSING_REQUIRED_FIELD fullcontact.founded
+  1931 records  MISSING_REQUIRED_FIELD fullcontact.country
+  1931 records  MISSING_REQUIRED_FIELD fullcontact.city
+  1931 records  MISSING_REQUIRED_FIELD fullcontact.industry
+  1931 records  MISSING_REQUIRED_FIELD fullcontact.assets
+  1931 records  MISSING_REQUIRED_FIELD fullcontact.revenue
