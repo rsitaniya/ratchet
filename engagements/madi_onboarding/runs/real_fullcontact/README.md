@@ -42,11 +42,23 @@ perfect score says nothing about that.
 
 The final gap report (`03_cycle3.gaps.txt`) contains **no `UNMAPPED_FIELD` rows
 at all** — every column the source carries is mapped. What remains is a
-structural bound, not unfinished work: `industry`, `assets` and `revenue` are
-required by the target schema and fullcontact has no column for any of them, so
-`integrated_rate` has a ceiling of `0.00` that no cycle can move. `value_recall`
-and `fully_correct_rate` are `null`, meaning unmeasured — the real benchmark pins
-no normalized-value gold. Null is not zero.
+structural bound, not unfinished work. The evaluator reports it as a number
+rather than leaving it to this paragraph: `integrated_ceiling` is `0.0` with
+`unsatisfiable_required` naming `assets`, `industry`, `revenue` — the required
+attributes fullcontact has no column for. No cycle can move that. A `0.00` rate
+under a ceiling of `0.00` means impossible; a `0.00` under a ceiling of `1.00`
+would mean merely unmapped, and telling those apart is the point.
+`value_recall` and `fully_correct_rate` are `null`, meaning unmeasured — the real
+benchmark pins no normalized-value gold. Null is not zero.
+
+That ceiling is a property of scoring one source against a schema describing the
+*fused* company entity; see
+[what `integrated_rate` is actually measuring](../../CASE_STUDY.md#what-integrated_rate-is-actually-measuring).
+
+The `NN.evaluate.json` files below were written during the run and predate those
+two fields, so they do not contain them — a receipt records what the evaluator
+emitted at the time, and is not rewritten afterwards. Re-running the command under
+**Reproduce** against the same committed adapter snapshot prints them.
 
 ## What it cost
 

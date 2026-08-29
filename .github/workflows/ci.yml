@@ -149,6 +149,51 @@ jobs:
           print("oracle OK: no-regression + well-formed + converged>seed:", conv)
           PY
 
+      # integrated_rate reads 0.00 both for "nobody mapped this yet" and for "this
+      # source structurally cannot satisfy the schema" -- MaDI's required list
+      # describes the FUSED entity and its sources are complementary, so every
+      # real source is permanently capped. That was carried in hand-written prose
+      # until integrated_ceiling made it a number. Assert the distinction survives.
+      - name: Integration ceiling separates unmapped from unsatisfiable
+        run: |
+          uv run python - <<'PY'
+          import json, tempfile
+          from pathlib import Path
+          from engagements.madi_onboarding import evaluate as E
+
+          FX = Path("engagements/madi_onboarding/fixtures")
+          e = json.load(open("/tmp/eval.json"))["per_source"]
+          for src, m in e.items():
+              assert 0.0 <= m["integrated_ceiling"] <= 1.0, (src, m)
+              assert isinstance(m["unsatisfiable_required"], list), (src, m)
+              assert m["unsatisfiable_required"] == sorted(m["unsatisfiable_required"]), src
+              # A rate above its own ceiling would mean the bound is computed wrong.
+              assert m["integrated_rate"] <= m["integrated_ceiling"], (src, m)
+              # No synthetic source is structurally capped; the fixtures were built
+              # completable. If this fires, the fixtures or the schema changed.
+              assert m["unsatisfiable_required"] == [], (src, m)
+
+          # The load-bearing case: an EMPTY adapter must report rate 0.0 with a
+          # ceiling above 0.0. Before this metric existed that was indistinguishable
+          # from a real source that can never integrate at all.
+          tmp = Path(tempfile.mkdtemp())
+          (tmp / "forbes.toml").write_text('source = "forbes"\n[fields]\n')
+          unmapped = E.evaluate_source("forbes", FX, tmp)
+          assert unmapped["integrated_rate"] == 0.0, unmapped
+          assert unmapped["integrated_ceiling"] > 0.0, unmapped
+          assert unmapped["unsatisfiable_required"] == [], unmapped
+
+          # And the opposite case, built here rather than assumed: drop the column
+          # gold maps to a required attribute and the ceiling must fall to 0.0 and
+          # name it, with no adapter able to recover it.
+          required = [a for a, spec in json.loads((FX / "target_schema.json").read_text())["attributes"].items() if spec.get("required")]
+          capped, unsat = E._integration_ceiling(
+              [{"a": "1", "b": "Acme"}], {"a": "id", "b": "name"}, required)
+          assert capped == 0.0 and unsat, (capped, unsat)
+          print("ceiling OK: unmapped =", unmapped["integrated_ceiling"],
+                "| structurally capped =", capped, unsat)
+          PY
+
       # The loop must not be able to edit what scores it. The implementer's
       # output is structured {file, old_string, new_string} edits, not a diff —
       # a rename/copy/symlink attack has no equivalent in that contract, so

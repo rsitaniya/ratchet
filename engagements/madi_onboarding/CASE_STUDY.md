@@ -156,6 +156,69 @@ Final yields, each at the ceiling its source imposes:
 
 `schema_f1` finished at `1.00` beside an `integrated_rate` of `0.00`. That pairing is the whole point: every column is now mapped to the attribute the answer key says it belongs to, and not one record onboards, because `fullcontact` carries no `industry`, `assets`, or `revenue` column at all. A complete mapping and a usable dataset are different things, and only one of the two metrics can tell them apart.
 
+## What `integrated_rate` is actually measuring
+
+`schema_f1` reaching `1.00` beside an `integrated_rate` of `0.00` invites an obvious
+question: is the second number broken? It is computed correctly, but it was scoped
+wrongly, and saying so precisely matters more than the number.
+
+MaDI's target schema marks 8 of its 9 attributes required, and
+`prepare_real_eval.py` copies that list verbatim — it is the benchmark's list, not
+this engagement's. What the schema describes, though, is the **fused** company
+entity. Its own field descriptions say so: `assets`, `revenue` and `keypeople` each
+read *"For fusion evaluation this value uses 2016 as the task-level temporal
+target."* The three sources are complementary by construction:
+
+| Source | Supplies | Structurally missing |
+|---|---|---|
+| `dbpedia` | all 8 required, plus `keypeople` | — |
+| `forbes` | id, name, country, industry, assets, revenue | `founded`, `city` |
+| `fullcontact` | id, name, country, city, founded, keypeople | `industry`, `assets`, `revenue` |
+
+`fullcontact` supplies exactly what `forbes` lacks. Scoring either alone against a
+fused-entity bar returns a constant fixed by its column list — not a result, and
+not something any cycle can move. Reported bare across three cycles, `0.00 → 0.00`
+reads as background noise, which is how a live signal got ignored once already.
+
+**So the bound is computed now, not narrated.** `evaluate_source` reports
+`integrated_ceiling` — the best `integrated_rate` a perfect set of normalizers could
+reach — and `unsatisfiable_required`, the required attributes gold says this source
+has no column for. Neither needs value gold, so both work on the real splits, the
+same property that makes `field_yield` usable there. It replaces a sentence four
+documents and the Gate 2 instructions each maintained by hand.
+
+The distinction it recovers is load-bearing in both directions:
+
+| Source | `integrated_rate` | `integrated_ceiling` | `unsatisfiable_required` |
+|---|---:|---:|---|
+| `forbes` (synthetic, empty adapter) | 0.00 | **1.00** | — |
+| `dbpedia` (synthetic, converged) | 1.00 | 1.00 | — |
+| `fullcontact` (real) | 0.00 | **0.00** | `assets`, `industry`, `revenue` |
+| `forbes` (real) | 0.00 | **0.00** | `city`, `founded` |
+| `dbpedia` (real) | 0.00 | **0.0413** | — |
+
+The first and third rows were indistinguishable before: both `0.00`, one meaning
+"not mapped yet", the other "cannot ever be". The last row is the one nobody knew.
+`dbpedia` is the only real source carrying a column for every required attribute,
+so it is structurally capable — and still only **4.13%** of its records hold a
+usable value for all eight at once. Even the richest real source is 96% incomplete
+at the record level, which is a fact about the benchmark that no metric here
+previously reported.
+
+**What this harness does not evaluate, and will not pretend to.** The fused entity
+is the thing MaDI's required list describes, and completeness is a cross-source
+property: a company complete in neither `forbes` nor `fullcontact` may well be
+complete once the two are matched and fused. This harness does not measure that on
+real data, and cannot. `download_data.py` pins Stage 1 only — the three CSVs, the
+target schema, and the schema-matching gold. No entity-matching gold and no fusion
+gold are published for the real sources, so there is nothing to score a fused record
+against. `evaluate_reconcile` does score matching and fusion, but against the
+synthetic `reconcile` fixtures alone; the real-split evaluator emits no `reconcile`
+key at all. Real-data fused completeness is therefore out of scope for this
+engagement, not merely unachieved by it — and `integrated_rate` on a real split
+should be read as an ingest-stage coverage number with a stated ceiling, never as an
+integration score.
+
 ## What this engagement demonstrates
 
 - An integration loop can work from domain failures instead of an open-ended prompt.

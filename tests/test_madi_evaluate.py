@@ -261,3 +261,71 @@ def test_field_yield_regression_ignores_a_newly_added_field():
         "field_yield": {"name": {"rate": 1.0}, "founded": {"rate": 0.0}},
     }}}
     assert E._detect_regressions(current, baseline) == []
+
+
+# --- integration ceiling ---------------------------------------------------
+# `integrated_rate` alone reads 0.00 both when nobody has mapped the source yet
+# and when the source structurally cannot satisfy the schema. That ambiguity used
+# to live in prose (Gate 2 asked a human to type "ceiling 0.00" by hand). These
+# pin the computed replacement, including the bypass: a source whose gold covers
+# every required attribute must NOT be reported as structurally capped.
+
+REQUIRED = ["id", "name", "founded"]
+
+
+def test_ceiling_is_zero_and_names_what_caps_it_when_gold_covers_no_such_column():
+    # The real-split shape: the source has no column gold maps to `founded`.
+    records = [{"a": "1", "b": "Acme"}]
+    ceiling, unsat = E._integration_ceiling(records, {"a": "id", "b": "name"}, REQUIRED)
+    assert ceiling == 0.0
+    assert unsat == ["founded"]
+
+
+def test_ceiling_is_reachable_share_when_every_required_attribute_is_mappable():
+    # Two of four records carry a usable value for all three required attributes.
+    records = [
+        {"a": "1", "b": "Acme", "c": "1998"},
+        {"a": "2", "b": "Beta", "c": ""},        # blank founded
+        {"a": "3", "b": "Gamma", "c": "null"},   # literal "null" founded
+        {"a": "4", "b": "Delta", "c": "2001"},
+    ]
+    gold = {"a": "id", "b": "name", "c": "founded"}
+    ceiling, unsat = E._integration_ceiling(records, gold, REQUIRED)
+    assert unsat == []
+    assert ceiling == 0.5
+
+
+def test_ceiling_counts_a_required_attribute_supplied_by_any_of_several_columns():
+    records = [{"a": "1", "b": "Acme", "c": "", "d": "1998"}]
+    gold = {"a": "id", "b": "name", "c": "founded", "d": "founded"}
+    ceiling, unsat = E._integration_ceiling(records, gold, REQUIRED)
+    assert unsat == []
+    assert ceiling == 1.0  # `d` supplies founded even though `c` is blank
+
+
+def test_ceiling_of_an_empty_source_is_zero_not_a_division_error():
+    # The list is sorted, so it reads the same regardless of schema key order.
+    assert E._integration_ceiling([], {"a": "id"}, REQUIRED) == (0.0, ["founded", "name"])
+
+
+def test_placeholder_detection_matches_the_normalizer_convention():
+    for blank in (None, "", "   ", "null", "NULL", "Null"):
+        assert E._is_placeholder(blank), blank
+    for real in ("0", "Acme", 0, False, "not null"):
+        assert not E._is_placeholder(real), real
+
+
+def test_an_unmapped_but_achievable_source_is_not_reported_as_capped(tmp_path):
+    # The distinction the metric exists to make: seed forbes has an empty adapter,
+    # so its rate is 0.0 -- but nothing structural stops it reaching 1.0.
+    (tmp_path / "forbes.toml").write_text('source = "forbes"\n[fields]\n')
+    result = E.evaluate_source("forbes", FIX, tmp_path)
+    assert result["integrated_rate"] == 0.0
+    assert result["unsatisfiable_required"] == []
+    assert result["integrated_ceiling"] > 0.0
+
+
+def test_a_fully_mapped_source_reaches_its_own_ceiling(tmp_path):
+    (tmp_path / "forbes.toml").write_text(FULL_FORBES)
+    result = E.evaluate_source("forbes", FIX, tmp_path)
+    assert result["integrated_rate"] <= result["integrated_ceiling"]

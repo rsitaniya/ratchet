@@ -32,7 +32,9 @@ produced a value, which needs no gold and is the number to read first:
 
 `integrated_rate` is `0.00` at every cycle and cannot move: the source has no
 column for `industry`, `assets`, or `revenue`, so a record can never carry every
-required target attribute. That is a structural ceiling, not a result.
+required target attribute. The evaluator now computes that bound —
+`integrated_ceiling` `0.0`, `unsatisfiable_required` `assets, industry, revenue` —
+so it reads as a known limit rather than a result.
 `value_recall` and `fully_correct_rate` are `null` — unmeasured, because the real
 benchmark pins no normalized-value gold. Null is not zero.
 

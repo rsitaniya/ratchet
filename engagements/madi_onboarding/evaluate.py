@@ -75,6 +75,56 @@ def _f1(predicted: dict[str, str], gold: dict[str, str]) -> float:
     return 0.0 if precision + recall == 0 else 2 * precision * recall / (precision + recall)
 
 
+def _is_placeholder(value: object) -> bool:
+    """A source's stand-in for "no value": absent, blank, or the literal "null".
+
+    The same convention `normalizers.non_placeholder_str` rejects. Used only to
+    compute an UPPER bound, so it is deliberately generous — a value it counts as
+    present may still be rejected by the normalizer a mapping actually chooses
+    (country_to_iso refuses "Other", for one), which can only push the true result
+    below the ceiling, never above it.
+    """
+    return value is None or str(value).strip() == "" or str(value).strip().lower() == "null"
+
+
+def _integration_ceiling(
+    records: list[dict], gold_mapping: dict[str, str], required: list[str]
+) -> tuple[float, list[str]]:
+    """The best `integrated_rate` this source could ever reach, and what caps it.
+
+    `integrated_rate` alone cannot distinguish "nobody has mapped this yet" from
+    "this source structurally cannot satisfy the schema" -- both read 0.00. That
+    ambiguity was carried in prose instead: the Gate 2 instructions asked a human
+    to type "ceiling 0.00 -- source lacks 3 required attributes" by hand, and four
+    documents repeated it. This computes it.
+
+    Returns (ceiling, unsatisfiable_required). `unsatisfiable_required` names the
+    required attributes gold says this source has no column for; when it is
+    non-empty the ceiling is 0.0 and no adapter can move it. When it is empty the
+    ceiling is the share of records carrying a usable value for every required
+    attribute, i.e. what a perfect set of normalizers would integrate.
+
+    Needs no value gold, so it works on the real splits, where `fully_correct_rate`
+    is None -- the same property that makes `field_yield` usable there.
+    """
+    columns_for: dict[str, list[str]] = {}
+    for column, target in gold_mapping.items():
+        columns_for.setdefault(target, []).append(column)
+
+    unsatisfiable = sorted(a for a in required if a not in columns_for)
+    if unsatisfiable or not records:
+        return 0.0, unsatisfiable
+
+    reachable = sum(
+        all(
+            any(not _is_placeholder(rec.get(c)) for c in columns_for[attr])
+            for attr in required
+        )
+        for rec in records
+    )
+    return round(reachable / len(records), 4), unsatisfiable
+
+
 def evaluate_source(source: str, fixtures_dir: Path, adapters_dir: Path) -> dict:
     target_schema = json.loads((fixtures_dir / "target_schema.json").read_text())
     gold_mapping = json.loads((fixtures_dir / "gold_mapping.json").read_text()).get(source, {})
@@ -100,6 +150,9 @@ def evaluate_source(source: str, fixtures_dir: Path, adapters_dir: Path) -> dict
     for src_field, spec in adapter.get("fields", {}).items():
         mapped.setdefault(spec["target"], []).append(src_field)
     produced = dict.fromkeys(mapped, 0)
+
+    required = [a for a, spec in target_schema.get("attributes", {}).items() if spec.get("required")]
+    ceiling, unsatisfiable = _integration_ceiling(records, gold_mapping, required)
 
     n = len(records)
     integrated = 0
@@ -135,6 +188,14 @@ def evaluate_source(source: str, fixtures_dir: Path, adapters_dir: Path) -> dict
         # None when this fixtures set has no gold_records.jsonl at all.
         "value_recall": (round(correct_values / total_values, 4) if total_values else 0.0) if has_value_gold else None,
         "integrated_rate": round(integrated / n, 4) if n else 0.0,
+        # The bound on the line above. MaDI's `required` list describes the FUSED
+        # company entity, and its sources are complementary by construction, so a
+        # single source is not expected to satisfy it: fullcontact carries no
+        # industry/assets/revenue column and forbes carries no founded/city one.
+        # Reported bare, their permanent 0.00 reads as a result; reported beside a
+        # ceiling of 0.00 and the attributes causing it, it reads as a known bound.
+        "integrated_ceiling": ceiling,
+        "unsatisfiable_required": unsatisfiable,
         "fully_correct_rate": (round(fully_correct / n, 4) if n else 0.0) if has_value_gold else None,
         # Denominator is every record, not just those carrying the source column:
         # a mapping that delivers nothing because the column is usually absent has

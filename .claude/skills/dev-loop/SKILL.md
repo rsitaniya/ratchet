@@ -371,12 +371,18 @@ reading the actual diff are what catch that.
         split" and must be shown as those words, with the reason (e.g. the real
         benchmark pins no value gold). `0.0` means measured and completely wrong. The
         two must never look alike.
-      - **State the ceiling on any metric that structurally cannot move.** On
-        `fullcontact`, `integrated_rate` can never exceed `0.00` because the source has
-        no column for `industry`, `assets`, or `revenue` at all. Reported bare, three
-        cycles of `0.00 → 0.00` read as background noise, which is exactly how a real
-        signal got ignored. Reported as "0.00, ceiling 0.00 — source lacks 3 required
-        attributes", it reads as a known bound.
+      - **Report `integrated_rate` with the ceiling the evaluator computed beside it,
+        never bare.** The evaluator emits `integrated_ceiling` and
+        `unsatisfiable_required` for every source. Quote both; do not derive, estimate,
+        or explain a ceiling yourself. `0.00` reported bare reads as a result, and three
+        cycles of `0.00 → 0.00` read as background noise — which is exactly how a real
+        signal got ignored once. `0.00, ceiling 0.00 — unsatisfiable: assets, industry,
+        revenue` reads as a known bound. The distinction is load-bearing in both
+        directions: a `0.00` under a ceiling of `1.00` means the work simply is not done
+        yet, and that is a different sentence to write.
+        This instruction used to ask you to work the bound out and phrase it by hand. It
+        is a number now for the same reason the structured-edit contract exists — a
+        model hand-computing something it cannot verify is the failure, not the phrasing.
       - **Do not surface a metric just because the evaluator emits one.** If a number
         does not answer a question the reviewer is actually deciding, it competes for
         attention with the ones that do. Say which question each number answers, and

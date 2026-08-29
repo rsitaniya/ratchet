@@ -18,7 +18,7 @@ These are measurement runs. Both gates were auto-answered, every run started fro
 - **Evaluation:** schema-mapping F1 against the real source’s separate gold; the evaluator scores all 2,000 records
 - **Convergence condition:** `schema_f1 == 1.0`
 
-`value_recall` and `fully_correct_rate` are `null` because the real benchmark provides no value gold. `integrated_rate` remains `0.0`: the source has no `founded` or `city` data, so a complete canonical record is impossible regardless of adapter quality.
+`value_recall` and `fully_correct_rate` are `null` because the real benchmark provides no value gold. `integrated_rate` remains `0.0`: the source has no `founded` or `city` data, so a complete canonical record is impossible regardless of adapter quality. The evaluator now reports that as `integrated_ceiling` `0.0` with `unsatisfiable_required` naming `city` and `founded`, which independently confirms the reading this paragraph had already made by hand.
 
 ## Result
 
