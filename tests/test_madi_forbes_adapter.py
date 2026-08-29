@@ -4,9 +4,10 @@ Records are copied verbatim from data/madi/sources/forbes.jsonl. That data is
 gitignored, so values are inlined here rather than read at test time — the
 adapter TOML itself is committed and is loaded for real.
 
-id is deliberately not covered by a "lands" assertion: apply_adapter() skips
-the literal "record_id" key unconditionally (adapters.py), so no adapter entry
-can ever map it for this source. See LIMITS in the change that added this file.
+id maps from forbes_url via identity (a URL, unique per company, present on
+all 2000 real records) — not from record_id, which is pipeline metadata
+synthesized only for live /ingest traffic and never present in the raw source
+rows the held-out evaluator scores against.
 """
 from pathlib import Path
 
@@ -52,24 +53,25 @@ def test_name_assets_and_revenue_land_for_a_real_record():
     assert res["target"]["name"] == "ICBC", res["failures"]
     assert res["target"]["assets"] == 3124900000000.0, res["failures"]
     assert res["target"]["revenue"] == 148700000000.0, res["failures"]
+    assert res["target"]["id"] == "http://www.forbes.com/companies/icbc/", res["failures"]
 
 
-def test_a_second_real_record_maps_the_same_three_fields():
+def test_a_second_real_record_maps_the_same_four_fields():
     res = A.apply_adapter(REAL_RECORDS[1], _adapter(), SCHEMA)
     assert res["target"]["name"] == "Berkshire Hathaway", res["failures"]
     assert res["target"]["assets"] == 493400000000.0, res["failures"]
     assert res["target"]["revenue"] == 178800000000.0, res["failures"]
+    assert res["target"]["id"] == "http://www.forbes.com/companies/berkshire-hathaway/", res["failures"]
 
 
-def test_record_id_is_never_mapped_to_id_even_when_present():
+def test_record_id_is_never_read_as_source_data_even_when_present():
     # apply_adapter() skips the literal "record_id" key unconditionally
-    # (adapters.py), so even a real /ingest record carrying it never produces
-    # "id" through this adapter's field map — id is out of scope this cycle.
+    # (adapters.py). id now comes from forbes_url instead, so this only checks
+    # that a record_id present alongside it (as a real /ingest record would
+    # carry) is never itself consulted for id.
     rec = dict(REAL_RECORDS[0], record_id="forbes-0")
     res = A.apply_adapter(rec, _adapter(), SCHEMA)
-    assert "id" not in res["target"]
-    missing = {f["field"] for f in res["failures"] if f["error_code"] == "MISSING_REQUIRED_FIELD"}
-    assert "id" in missing
+    assert res["target"]["id"] == "http://www.forbes.com/companies/icbc/", res["failures"]
 
 
 def test_malformed_asset_value_raises_invalid_value_not_silently_dropped():

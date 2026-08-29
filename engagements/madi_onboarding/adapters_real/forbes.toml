@@ -26,10 +26,13 @@ normalizer = "currency_to_usd"
 target = "revenue"
 normalizer = "currency_to_usd"
 
-# id is NOT mapped here. The raw forbes records carry no natural identifier
-# (only a URL slug); to_replay.py assigns "forbes-<n>" under the literal key
-# "record_id" before /ingest sees it, and adapters.py's apply_adapter() skips
-# any field literally named "record_id" unconditionally, before ever consulting
-# this adapter's [fields] map. A [fields.record_id] entry here would never
-# execute — confirmed by reading apply_adapter()'s loop, not assumed. Mapping
-# id would require a change to the mapping engine itself, out of scope here.
+# id comes from forbes_url, not record_id. record_id is pipeline metadata:
+# to_replay.py synthesizes it under that literal key only for live /ingest
+# traffic, and apply_adapter() skips that key unconditionally — but it is
+# never present on the raw source rows the held-out evaluator scores, so it
+# was never a candidate for id in the first place. forbes_url is: a URL like
+# "http://www.forbes.com/companies/icbc/", unique per company, present on all
+# 2000 real records — identity passes it through as-is.
+[fields.forbes_url]
+target = "id"
+normalizer = "identity"

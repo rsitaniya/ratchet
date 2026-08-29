@@ -74,16 +74,16 @@ A control firing and a human declining are recorded as different outcomes. Colla
 
 Two numbers are deliberately absent. **Token cost:** the harness does not expose a reliable per-subagent count, and an estimate would be the one unfalsifiable number in a document built on receipts. **Human decision time:** each gate span runs from the previous phase mark to the human's answer, so it contains the orchestrator composing the proposals or rendering the diff as well as an operator thinking, and nothing in the loop marks the boundary between them. A "human minutes" figure derived from that span would be agent time wearing a human label, so the loop reports agent time — the phases with no operator in them at all — and honest wall-clock beside it.
 
-**Measured set: three cycles on the real `fullcontact` split.** This is the harder of the two real-data splits — `fullcontact`'s columns are anonymized (`Attribute_1`..`Attribute_6`, no header names), unlike `forbes`' self-descriptive columns, so the mapping has to come from record values, not column names. Each cycle onboarded one or more fields into the empty adapter and was reviewed at both gates: cycle 1 mapped `id` and `name`, cycle 2 `country`, `city` and `founded`, cycle 3 `keypeople`. Every gate in this set was answered by an operator at the terminal, which is what makes the wall-clock column usable. It replaces an earlier run of the same split whose numbers were not — that run's receipts and the reason it was superseded are in [`runs/real_fullcontact_unattended/`](runs/real_fullcontact_unattended/README.md), and its own findings are discussed in the next section. Per-cycle receipts for this run are in [`runs/real_fullcontact/`](runs/real_fullcontact/README.md).
+**Measured set: five cycles across two real-data sources.** Every config appends to the same delivery log, so the table below is the whole loop's record, not one split's — grouping by the `fullcontact.*` / `forbes.*` metric-key prefix is what separates the two. Cycles 1–3 are the harder of the two real-data splits — `fullcontact`'s columns are anonymized (`Attribute_1`..`Attribute_6`, no header names), unlike `forbes`' self-descriptive columns, so the mapping has to come from record values, not column names: cycle 1 mapped `id` and `name`, cycle 2 `country`, `city` and `founded`, cycle 3 `keypeople`. Cycles 4–5 onboard the real `forbes` split from its own empty adapter: cycle 4 mapped `name`, `assets`, and `revenue` from self-descriptive columns; cycle 5 mapped `id` from `forbes_url` after a wrong first read of the gap (a stale comment had blamed a mapping-engine limitation that a schema-mapping-F1 probe against the held-out evaluator disproved before any code changed — the real cause was that `forbes_url`, not the pipeline's synthesized `record_id`, is the correct source column). Every gate in this set was answered by an operator at the terminal, which is what makes the wall-clock column usable. Cycles 1–3 replace an earlier run of the same `fullcontact` split whose numbers were not — that run's receipts and the reason it was superseded are in [`runs/real_fullcontact_unattended/`](runs/real_fullcontact_unattended/README.md), and its own findings are discussed in the next section. Per-cycle receipts for cycles 1–3 are in [`runs/real_fullcontact/`](runs/real_fullcontact/README.md); the `forbes` real-split baseline is in [`runs/real_forbes/`](runs/real_forbes/README.md).
 
 <!-- delivery-economics:start -->
 | Reported | Value |
 |---|---|
-| Cycles recorded / accepted at Gate 2 | 3 / 3 (100%) |
+| Cycles recorded / accepted at Gate 2 | 5 / 5 (100%) |
 | Accepted on first pass | 100% (0 resubmissions) |
 | Stopped by a control | 0 |
-| Agent minutes per accepted change | 7.36 |
-| Wall minutes per accepted change (incl. gates) | 10.69 |
+| Agent minutes per accepted change | 5.53 |
+| Wall minutes per accepted change (incl. gates) | 9.78 |
 | Evaluator calls per accepted change | not measured (`--eval-log` was not set this run) |
 
 | Cycle | Outcome | Wall time | Agent time | Metrics moved |
@@ -91,13 +91,15 @@ Two numbers are deliberately absent. **Token cost:** the harness does not expose
 | 1 | kept | 516.0s | 331.6s | `fullcontact.field_yield.id` new → 1.0, `fullcontact.field_yield.name` new → 1.0, `fullcontact.schema_f1` 0.0 → 0.5 |
 | 2 | kept | 723.4s | 544.2s | `fullcontact.field_yield.city` new → 0.7121, `fullcontact.field_yield.country` new → 0.7359, `fullcontact.field_yield.founded` new → 0.5469, `fullcontact.schema_f1` 0.5 → 0.9091 |
 | 3 | kept | 684.0s | 449.4s | `fullcontact.field_yield.keypeople` new → 0.0994, `fullcontact.schema_f1` 0.9091 → 1.0 |
+| 4 | kept | 491.0s | 234.7s | `forbes.field_yield.assets` new → 1.0, `forbes.field_yield.name` new → 1.0, `forbes.field_yield.revenue` new → 1.0, `forbes.schema_f1` 0.0 → 0.6667 |
+| 5 | kept | 520.5s | 100.6s | `forbes.field_yield.id` new → 1.0, `forbes.schema_f1` 0.6667 → 0.8 |
 <!-- delivery-economics:end -->
 
 Generated from [`runs/delivery/cycles.jsonl`](runs/delivery/cycles.jsonl) by `scripts/render_delivery_table.py`; CI fails if this region drifts from the committed records, so no figure here was retyped by hand.
 
 Zero control stops is a limit of this set, not a claim the guard or the regression check are unneeded — no cycle in this run attempted a protected path or regressed an already-onboarded field. Raw records: [`engagements/madi_onboarding/runs/delivery/cycles.jsonl`](runs/delivery/cycles.jsonl).
 
-The gap between the two time figures is small here — `7.36` agent minutes against `10.69` wall minutes — because the three cycles closed within 168 seconds of each other end to end (516s, 723s, 684s) and no gate span exceeded 171 seconds. That is the point of measuring them separately. An earlier run of this same split reported `156.06` wall minutes per accepted change on the same work, because one Gate 2 span ran 25,996 seconds with nobody at the terminal. Neither figure was trimmed; the loop cannot tell an operator thinking from an operator absent, so it publishes what it measured and says which run each number came from.
+The gap between the two time figures is small here — `5.53` agent minutes against `9.78` wall minutes — because all five cycles closed within roughly 233 seconds of each other end to end (516s, 723s, 684s, 491s, 521s) and no gate span exceeded 279 seconds. That is the point of measuring them separately. An earlier run of the `fullcontact` split reported `156.06` wall minutes per accepted change on the same work, because one Gate 2 span ran 25,996 seconds with nobody at the terminal. Neither figure was trimmed; the loop cannot tell an operator thinking from an operator absent, so it publishes what it measured and says which run each number came from.
 
 ## What the evaluator could not see
 
