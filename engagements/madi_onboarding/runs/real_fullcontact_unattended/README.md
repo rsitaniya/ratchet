@@ -13,10 +13,10 @@ two real splits.
 
 | Cycle | Commit | schema_f1 | Fields mapped that cycle |
 |---|---|---:|---|
-| baseline | `15af084` | 0.0000 | — (empty adapter) |
-| 1 | `ebc0d56` | 0.5000 | `id`, `name` |
-| 2 | `5b9daf8` | 0.9091 | `country`, `city`, `founded` |
-| 3 | `9b7974c` | 1.0000 | `keypeople` |
+| baseline | `cc3a3f0` | 0.0000 | — (empty adapter) |
+| 1 | `76889a4` | 0.5000 | `id`, `name` |
+| 2 | `1f46998` | 0.9091 | `country`, `city`, `founded` |
+| 3 | `d6cd364` | 1.0000 | `keypeople` |
 
 Per-field yield at the end — the share of the 1,931 records that actually
 produced a value, which needs no gold and is the number to read first:
