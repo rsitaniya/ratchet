@@ -27,8 +27,8 @@ Integration Benchmark (MaDI-Bench).
   and verifies each against its git blob SHA-1.
 - **Difficulty variants** come from MaDI-Bench's own `easy/`, `medium/`, `hard/`
   directories — this project does not generate its own corruptions of their data.
-- The dev-flywheel loop code in this repo is Apache-2.0 and unaffected either way;
-  only the downloaded benchmark files are in question.
+- The dev-flywheel loop code in this repo is AGPL-3.0-or-later and unaffected either
+  way; only the downloaded benchmark files are in question.
 
 ## Reproducibility without redistribution
 

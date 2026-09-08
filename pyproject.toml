@@ -8,8 +8,8 @@ version = "0.5.0"
 description = "A controlled, human-gated delivery loop that turns API signals into evaluated changes."
 readme = "README.md"
 requires-python = ">=3.11"
-license = "Apache-2.0"
-license-files = ["LICENSE", "NOTICE"]
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
 authors = [{ name = "Rohan Sitaniya" }]
 keywords = ["agentic-ai", "llm", "claude-code", "fastapi", "developer-tools", "ai-agents"]
 classifiers = [
