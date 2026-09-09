@@ -1,7 +1,7 @@
 # Real-data TEST split of the same engagement: scores adapters against MaDI-Bench's
 # own CSVs and its own schema-matching gold (sm_mapping_gold.json), instead of the
-# synthetic fixtures/ used every dev cycle (flywheel.toml). Selected the same way:
-#   export FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.real.toml
+# synthetic fixtures/ used every dev cycle (ratchet.toml). Selected the same way:
+#   export RATCHET_CONFIG=engagements/madi_onboarding/ratchet.real.toml
 #
 # Preconditions (run once, from repo root):
 #   uv run python engagements/madi_onboarding/download_data.py
@@ -22,7 +22,7 @@ evaluator = "python engagements/madi_onboarding/evaluate.py --fixtures engagemen
 analyzer = "python engagements/madi_onboarding/analyze_integration.py --source forbes"
 
 [protected]
-# Same reasons as flywheel.toml, plus the two real-data-specific paths: the script
+# Same reasons as ratchet.toml, plus the two real-data-specific paths: the script
 # that legitimately reads real gold, and its output (which also already matches
 # the **/gold_*.json / **/*_gold.json globs below).
 paths = [
@@ -32,7 +32,7 @@ paths = [
     "**/fixtures/**",
     "**/gold_*.json", "**/*_gold.json",
     "**/gold_*.jsonl", "**/*_gold.jsonl",
-    "**/flywheel.toml", "**/flywheel.real.toml",
+    "**/ratchet.toml", "**/ratchet.real.toml",
     "scripts/**",
     ".claude/**",
     # Receipts are the evidence a reviewer checks, so the implementer must not be

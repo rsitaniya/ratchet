@@ -12,7 +12,7 @@ not read back). Claude Code's subagent frontmatter has no path-scoped
 path-level — so a `PreToolUse` hook is the mechanism that expresses "this one
 agent cannot read these paths."
 
-The globs come from `[protected].unreadable` in the active flywheel.toml, not
+The globs come from `[protected].unreadable` in the active ratchet.toml, not
 from a second hand-maintained list. `[protected].paths` (unwritable) stays
 separate on purpose: the implementer must read `adapters.py` and the app source
 it edits against, and must never read gold, fixtures, or a prior cycle's
@@ -38,7 +38,7 @@ That fail-closed state is total, and deliberately so: it denies ordinary app
 source too, which leaves the implementer unable to do anything at all. Loosening
 it would mean guessing which engagement is active, and guessing wrong picks
 another engagement's unreadable list. The right place to catch this is before the
-cycle starts, so /dev-loop STEP 1 refuses to run when FLYWHEEL_CONFIG is missing
+cycle starts, so /dev-loop STEP 1 refuses to run when RATCHET_CONFIG is missing
 from Claude Code's own environment.
 
 Exit 0 = allowed. Exit 2 = denied (Claude Code blocks the call and shows stderr).
@@ -53,7 +53,7 @@ import sys
 from pathlib import Path
 
 from check_protected_paths import matches_glob
-from flywheel_config import config_path, get_value
+from ratchet_config import config_path, get_value
 
 # Where each guarded tool puts the thing it is about to read.
 PATH_FIELDS = ("file_path", "path", "notebook_path")
@@ -129,11 +129,11 @@ def main(stdin=None) -> int:
         print(f"DENIED: {e}", file=sys.stderr)
         return 2
     if not cfg.exists():
-        print(f"DENIED: no flywheel.toml resolved (looked for {cfg}).", file=sys.stderr)
-        print("  This hook inherits Claude Code's own environment, so FLYWHEEL_CONFIG", file=sys.stderr)
+        print(f"DENIED: no ratchet.toml resolved (looked for {cfg}).", file=sys.stderr)
+        print("  This hook inherits Claude Code's own environment, so RATCHET_CONFIG", file=sys.stderr)
         print("  must be exported BEFORE launching Claude Code — a Bash step's export", file=sys.stderr)
         print("  does not reach it. Relaunch as:", file=sys.stderr)
-        print("    export FLYWHEEL_CONFIG=engagements/<name>/flywheel.toml && claude", file=sys.stderr)
+        print("    export RATCHET_CONFIG=engagements/<name>/ratchet.toml && claude", file=sys.stderr)
         return 2
 
     globs = get_value("protected.unreadable") or []

@@ -1,28 +1,28 @@
-"""Loads flywheel.toml — the seam between the generic loop and one specific API.
+"""Loads ratchet.toml — the seam between the generic loop and one specific API.
 
 The simulator reads its domain knowledge from here rather than hardcoding it, so
-pointing the flywheel at a different FastAPI app is a config edit rather than a
+pointing the ratchet at a different FastAPI app is a config edit rather than a
 code edit. See docs/ADAPTING.md. `[app].analyzer` is required, not optional:
 there is no generic fallback analyzer — an engagement's telemetry shape is its
 own, so its gap-ranker is too.
 
 Which config file is active is chosen by (in order): an explicit path argument,
-the FLYWHEEL_CONFIG environment variable, then the repo-root flywheel.toml. This
+the RATCHET_CONFIG environment variable, then the repo-root ratchet.toml. This
 lets more than one app (e.g. engagements under engagements/) run its own loop
 without disturbing another's. Path-valued keys are resolved against the
 config file's own directory, so an engagement config refers to its own files.
 
 A missing config is not an error when it is *implicit* (no path argument, no
-FLYWHEEL_CONFIG set — the repo-root default, which no longer exists since the
+RATCHET_CONFIG set — the repo-root default, which no longer exists since the
 calculator example was removed): every value has a working default, and tools
 like the simulator legitimately run with no app selected. An *explicit*
-FLYWHEEL_CONFIG that names a file that does not exist is different: it is an
+RATCHET_CONFIG that names a file that does not exist is different: it is an
 operator typo, and silently falling back to defaults there would mean a
 security-relevant key like [protected].paths goes from "the intended engagement's
 list" to "empty" with no signal. config_path() raises for that case only.
 
 As a CLI, prints one value so shell steps can stay generic:
-    python scripts/flywheel_config.py --get app.module
+    python scripts/ratchet_config.py --get app.module
 """
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_CONFIG_PATH = REPO_ROOT / "flywheel.toml"
+DEFAULT_CONFIG_PATH = REPO_ROOT / "ratchet.toml"
 
 DEFAULTS: dict[str, dict[str, Any]] = {
     "app": {
@@ -95,9 +95,9 @@ PATH_KEYS: dict[str, tuple[str, ...]] = {
 
 
 def config_path(path: Path | str | None = None) -> Path:
-    """Resolve which config file to load: explicit arg > $FLYWHEEL_CONFIG > default.
+    """Resolve which config file to load: explicit arg > $RATCHET_CONFIG > default.
 
-    Raises FileNotFoundError only when $FLYWHEEL_CONFIG is set and does not
+    Raises FileNotFoundError only when $RATCHET_CONFIG is set and does not
     exist — an operator typo, not a supported "no app selected" state. An
     explicit `path` argument and the repo-root default both stay permissive:
     a caller that resolved its own path (or the implicit default when no
@@ -107,14 +107,14 @@ def config_path(path: Path | str | None = None) -> Path:
     """
     if path is not None:
         return Path(path)
-    env = os.environ.get("FLYWHEEL_CONFIG")
+    env = os.environ.get("RATCHET_CONFIG")
     if not env:
         return DEFAULT_CONFIG_PATH
     env_path = Path(env)
     if not env_path.exists():
         raise FileNotFoundError(
-            f"FLYWHEEL_CONFIG={env!r} does not exist. Fix the path, or unset "
-            f"FLYWHEEL_CONFIG to fall back to {DEFAULT_CONFIG_PATH}."
+            f"RATCHET_CONFIG={env!r} does not exist. Fix the path, or unset "
+            f"RATCHET_CONFIG to fall back to {DEFAULT_CONFIG_PATH}."
         )
     return env_path
 
@@ -163,7 +163,7 @@ def get_value(dotted: str, config: dict[str, dict[str, Any]] | None = None) -> A
 def main(argv: list[str] | None = None) -> None:
     import argparse
 
-    ap = argparse.ArgumentParser(description="Print one value from the active flywheel.toml")
+    ap = argparse.ArgumentParser(description="Print one value from the active ratchet.toml")
     ap.add_argument("--get", metavar="SECTION.KEY", required=True, help="e.g. app.module")
     args = ap.parse_args(argv)
     try:

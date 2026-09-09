@@ -1,4 +1,4 @@
-"""Partner-data onboarding API — the "customer" service the flywheel improves.
+"""Partner-data onboarding API — the "customer" service the ratchet improves.
 
 A partner sends records from its own system to a single stable endpoint:
 
@@ -7,7 +7,7 @@ A partner sends records from its own system to a single stable endpoint:
 The service maps and normalizes the record to a canonical target schema using a
 per-source *adapter* (declarative data under adapters/). A not-yet-onboarded
 source has an empty adapter, so its records fail with structured errors. Those
-errors are the product signal: the flywheel reads them, proposes the smallest
+errors are the product signal: the ratchet reads them, proposes the smallest
 adapter change, and (after human approval + a held-out evaluation) grows the
 adapter until the source integrates — without regressing already-onboarded ones.
 
@@ -33,7 +33,7 @@ from engagements.madi_onboarding import adapters as A
 from engagements.madi_onboarding import fusion, matching, similarity
 
 ENGAGEMENT_DIR = Path(__file__).resolve().parent.parent
-# Overridable so the same app can serve the real-data test split (flywheel.real.toml
+# Overridable so the same app can serve the real-data test split (ratchet.real.toml
 # points these at data/madi/target_schema.json and adapters_real/) without a fork.
 TARGET_SCHEMA_PATH = Path(os.environ.get("TARGET_SCHEMA_PATH", ENGAGEMENT_DIR / "fixtures" / "target_schema.json"))
 TARGET_SCHEMA = json.loads(TARGET_SCHEMA_PATH.read_text())
@@ -50,7 +50,7 @@ app = FastAPI(
     description=(
         "Ingests partner records into a canonical company schema via per-source "
         "adapters. Unmapped fields, bad values, and missing required attributes are "
-        "recorded as structured integration signal for the dev-flywheel loop."
+        "recorded as structured integration signal for the ratchet loop."
     ),
     version="0.1.0",
 )

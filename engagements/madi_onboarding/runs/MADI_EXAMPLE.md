@@ -61,10 +61,10 @@ clusters so it stays visible independent of matching quality (see `evaluate.py`)
 Reproduce cycle 1's gap report:
 
 ```bash
-export FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.toml
-export USAGE_LOG_PATH=$(uv run python scripts/flywheel_config.py --get app.usage_log)
+export RATCHET_CONFIG=engagements/madi_onboarding/ratchet.toml
+export USAGE_LOG_PATH=$(uv run python scripts/ratchet_config.py --get app.usage_log)
 cp engagements/madi_onboarding/runs/reconcile/01_cycle1.matching_rules.toml engagements/madi_onboarding/matching_rules.toml
-uv run uvicorn "$(uv run python scripts/flywheel_config.py --get app.module)" --port 8000 &   # wait for /health
+uv run uvicorn "$(uv run python scripts/ratchet_config.py --get app.module)" --port 8000 &   # wait for /health
 # POST fixtures/reconcile/{left,right}.jsonl to /reconcile with X-Run-Id: <id>
 uv run python engagements/madi_onboarding/analyze_integration.py "$USAGE_LOG_PATH" --reconcile --run-id <id>
 git checkout engagements/madi_onboarding/matching_rules.toml
@@ -73,7 +73,7 @@ git checkout engagements/madi_onboarding/matching_rules.toml
 Reproduce the evaluator output for either cycle:
 
 ```bash
-export FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.toml
+export RATCHET_CONFIG=engagements/madi_onboarding/ratchet.toml
 cp engagements/madi_onboarding/runs/reconcile/01_cycle1.matching_rules.toml engagements/madi_onboarding/matching_rules.toml
 uv run python engagements/madi_onboarding/evaluate.py --baseline engagements/madi_onboarding/runs/reconcile/00_baseline.evaluate.json
 # → matches 01_cycle1.evaluate.json's "reconcile" key
@@ -88,10 +88,10 @@ the same zero state these receipts did.
 ## How the gap reports were produced
 
 ```bash
-export FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.toml
-export USAGE_LOG_PATH=$(uv run python scripts/flywheel_config.py --get app.usage_log)
+export RATCHET_CONFIG=engagements/madi_onboarding/ratchet.toml
+export USAGE_LOG_PATH=$(uv run python scripts/ratchet_config.py --get app.usage_log)
 uv run python engagements/madi_onboarding/to_replay.py --source forbes
-uv run uvicorn "$(uv run python scripts/flywheel_config.py --get app.module)" --port 8000 &   # wait for /health
+uv run uvicorn "$(uv run python scripts/ratchet_config.py --get app.module)" --port 8000 &   # wait for /health
 uv run python scripts/simulate.py --replay engagements/madi_onboarding/replay_forbes.jsonl --run-id <id> http://localhost:8000
 uv run python engagements/madi_onboarding/analyze_integration.py "$USAGE_LOG_PATH" --source forbes --run-id <id>
 ```
@@ -99,7 +99,7 @@ uv run python engagements/madi_onboarding/analyze_integration.py "$USAGE_LOG_PAT
 ## Reproduce the evaluator output
 
 ```bash
-export FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.toml
+export RATCHET_CONFIG=engagements/madi_onboarding/ratchet.toml
 cp engagements/madi_onboarding/runs/forbes/01_cycle1.adapter.toml engagements/madi_onboarding/adapters/forbes.toml
 uv run python engagements/madi_onboarding/evaluate.py --baseline engagements/madi_onboarding/runs/forbes/00_baseline.evaluate.json
 # → matches 01_cycle1.evaluate.json
@@ -114,7 +114,7 @@ permanently would remove the thing the case study demonstrates.
 
 ## Regenerating live, instead of from these receipts
 
-`FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.toml`, then run `/dev-loop`
+`RATCHET_CONFIG=engagements/madi_onboarding/ratchet.toml`, then run `/dev-loop`
 against the shipped (empty) adapter — Gate 1 and Gate 2 walk the same two cycles
 these receipts record, live, with the evaluator run for real at each Gate 2.
 
@@ -122,7 +122,7 @@ these receipts record, live, with the evaluator run for real at each Gate 2.
 
 `runs/real_forbes/` — the same mechanism, run against MaDI-Bench's own forbes CSV (2000 records)
 and its own schema-matching gold instead of the synthetic fixtures above, selected by
-`FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.real.toml`. Two human-gated `/dev-loop`
+`RATCHET_CONFIG=engagements/madi_onboarding/ratchet.real.toml`. Two human-gated `/dev-loop`
 cycles have landed on it (`schema_f1` `0.0 → 0.6667 → 0.8`), each scoring the held-out
 evaluator for real at Gate 2, the same as the synthetic cycles above. See
 [runs/real_forbes/README.md](real_forbes/README.md) and the case study's

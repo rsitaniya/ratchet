@@ -13,7 +13,7 @@ These are measurement runs. Both gates were auto-answered, every run started fro
 
 - **Runs:** 5
 - **Cycle cap:** 5 per run
-- **Configuration:** `flywheel.real.toml`
+- **Configuration:** `ratchet.real.toml`
 - **Traffic:** 300 replayed records from the 2,000-record real Forbes source
 - **Evaluation:** schema-mapping F1 against the real source’s separate gold; the evaluator scores all 2,000 records
 - **Convergence condition:** `schema_f1 == 1.0`
@@ -62,7 +62,7 @@ The current loop no longer accepts model-authored diffs. The implementer returns
 ## Reproduce
 
 ```bash
-export FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.real.toml
+export RATCHET_CONFIG=engagements/madi_onboarding/ratchet.real.toml
 uv run python engagements/madi_onboarding/download_data.py
 uv run python engagements/madi_onboarding/csv_to_ingest.py --source forbes
 uv run python engagements/madi_onboarding/prepare_real_eval.py

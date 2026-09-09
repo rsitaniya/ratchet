@@ -28,7 +28,7 @@ import sys
 from pathlib import Path
 
 from cycle_log import summarize
-from flywheel_config import get_value
+from ratchet_config import get_value
 
 START = "<!-- delivery-economics:start -->"
 END = "<!-- delivery-economics:end -->"

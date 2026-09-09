@@ -1,6 +1,6 @@
 # Engagement config: points the generic loop at the partner-onboarding app.
-# Selected by exporting FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.toml.
-# Path-valued keys resolve against THIS file's directory (see scripts/flywheel_config.py).
+# Selected by exporting RATCHET_CONFIG=engagements/madi_onboarding/ratchet.toml.
+# Path-valued keys resolve against THIS file's directory (see scripts/ratchet_config.py).
 
 [app]
 module = "engagements.madi_onboarding.app.main:app"
@@ -26,7 +26,7 @@ paths = [
     "**/fixtures/**",                                       # sources + gold (records, pairs, fused)
     "**/gold_*.json", "**/*_gold.json",
     "**/gold_*.jsonl", "**/*_gold.jsonl",                  # this repo's actual gold files are .jsonl
-    "**/flywheel.toml",                                    # this file: declares the evaluator and this very list
+    "**/ratchet.toml",                                    # this file: declares the evaluator and this very list
     "scripts/**",                                          # the loop's own machinery (guard, config loader, simulator)
     ".claude/**",                                          # the orchestrator skills and agent definitions
     # Receipts are the evidence a reviewer checks, so the implementer must not be

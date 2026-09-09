@@ -20,7 +20,7 @@ base_url = "http://localhost:8000"
 analyzer = "uv run python myservice/analyze.py"
 ```
 
-Set `FLYWHEEL_CONFIG=path/to/flywheel.toml` to select a non-root configuration. Paths such as `usage_log` and a replay file resolve relative to that file. A missing configured file is an error. Fix the path or unset `FLYWHEEL_CONFIG`.
+Set `RATCHET_CONFIG=path/to/ratchet.toml` to select a non-root configuration. Paths such as `usage_log` and a replay file resolve relative to that file. A missing configured file is an error. Fix the path or unset `RATCHET_CONFIG`.
 
 ## Required telemetry
 

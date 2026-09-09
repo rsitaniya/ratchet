@@ -1,16 +1,16 @@
-# dev-flywheel — Agentic Dev Loop
+# ratchet — Agentic Dev Loop
 
 The orchestration, traffic generation, structured-edit validation, and gates are domain-free;
-everything domain-specific is named in one `flywheel.toml` and an
+everything domain-specific is named in one `ratchet.toml` and an
 `engagements/<name>/` package — see `docs/ADAPTING.md`. Two configs in this repo
 select two different datasets, protected sets, and oracles against the same loop:
-`engagements/madi_onboarding/flywheel.toml` (synthetic dev fixtures, scored every
-cycle) and `flywheel.real.toml` (real MaDI-Bench data, the held-out test split).
+`engagements/madi_onboarding/ratchet.toml` (synthetic dev fixtures, scored every
+cycle) and `ratchet.real.toml` (real MaDI-Bench data, the held-out test split).
 
 The reference engagement, `engagements/madi_onboarding/`, points the generic loop
 at a partner-data onboarding API benchmarked on MaDI-Bench, with a **held-out
 evaluator** the loop is forbidden to edit. It selects itself purely via
-`FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.toml`.
+`RATCHET_CONFIG=engagements/madi_onboarding/ratchet.toml`.
 
 ## Quick start
 
@@ -18,15 +18,15 @@ evaluator** the loop is forbidden to edit. It selects itself purely via
 # 0. Export the engagement config BEFORE launching Claude Code — the
 #    implementer's read-guard hook inherits Claude Code's own environment,
 #    and a Bash step's export never reaches it.
-export FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.toml
+export RATCHET_CONFIG=engagements/madi_onboarding/ratchet.toml
 
 # 1. Install dependencies
 uv sync --all-extras --locked
 
 # 2. Point the loop at the reference engagement and start its API
-export FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.toml
-export USAGE_LOG_PATH=$(uv run python scripts/flywheel_config.py --get app.usage_log)
-uv run uvicorn "$(uv run python scripts/flywheel_config.py --get app.module)" --reload
+export RATCHET_CONFIG=engagements/madi_onboarding/ratchet.toml
+export USAGE_LOG_PATH=$(uv run python scripts/ratchet_config.py --get app.usage_log)
+uv run uvicorn "$(uv run python scripts/ratchet_config.py --get app.module)" --reload
 
 # 3. Build the replay traffic the config points at (in a second terminal),
 #    then run the simulator
@@ -44,10 +44,10 @@ uv run python engagements/madi_onboarding/to_replay.py --source forbes
 
 | File | Purpose |
 |------|---------|
-| `flywheel.toml` | **The only seam between the loop and a specific API** — app module, evaluator, required analyzer, protected paths. One per app/split; this repo ships `engagements/madi_onboarding/flywheel.toml` (dev) and `flywheel.real.toml` (test) |
+| `ratchet.toml` | **The only seam between the loop and a specific API** — app module, evaluator, required analyzer, protected paths. One per app/split; this repo ships `engagements/madi_onboarding/ratchet.toml` (dev) and `ratchet.real.toml` (test) |
 | `usage_log.jsonl` | Runtime product signal (gitignored; auto-created by API traffic) |
 | `scripts/simulate.py` | Schema-driven simulator (called by /simulate skill) |
-| `scripts/flywheel_config.py` | Loads the active `flywheel.toml` (via `FLYWHEEL_CONFIG`); `--get KEY` accessor for shell steps |
+| `scripts/ratchet_config.py` | Loads the active `ratchet.toml` (via `RATCHET_CONFIG`); `--get KEY` accessor for shell steps |
 | `scripts/check_protected_paths.py` | Rejects any patch touching held-out evaluators/gold/fixtures/`runs/` (`[protected].paths`); fails closed if no config resolves |
 | `scripts/check_readable.py` | The implementer's READ boundary (`[protected].unreadable`), run as a `PreToolUse` hook from `implementer.md`'s frontmatter so it binds that subagent only; fails closed |
 | `scripts/cycle_log.py` | Per-cycle delivery telemetry — phase wall-clock, gate time, outcome, resubmissions, metric deltas; `report` derives cost per accepted change |
@@ -66,7 +66,7 @@ uv run python engagements/madi_onboarding/to_replay.py --source forbes
 - **usage_log.jsonl is runtime telemetry.** It is append-only during a run, but gitignored so local simulator traffic does not dirty the submission.
 - **Loop closure:** The simulator re-fetches /openapi.json each cycle, so new endpoints are exercised automatically without editing the simulator.
 - **Continuous mode:** Use `/loop /dev-loop`; `/dev-loop` itself is one complete cycle. `/dev-loop-trial` is a separate measurement mode that auto-answers both gates to measure agent convergence — never a mode for landing real changes.
-- **No domain knowledge in the loop.** `scripts/` and `.claude/` must stay generic. Anything app-specific belongs in `flywheel.toml` or an `engagements/<name>/` package's own analyzer (`[app].analyzer` is required — there is no generic fallback).
+- **No domain knowledge in the loop.** `scripts/` and `.claude/` must stay generic. Anything app-specific belongs in `ratchet.toml` or an `engagements/<name>/` package's own analyzer (`[app].analyzer` is required — there is no generic fallback).
 - **Every submission goes through `scripts/apply_edits.py`, never a hand-written diff.** The implementer returns structured `{file, old_string, new_string}` edits, plus `VERIFICATION` (one row per mapped field, tracing a real source value through the chosen normalizer) and `LIMITS` (what the change does not do). A `VERIFICATION` row whose result is an error is a hard rejection at STEP 4, before tests ever run — that block exists so a mapping that declares a correspondence and normalizes nothing cannot be submitted without the agent writing down that it is dead. It does not calculate hunk headers or line counts. `apply_edits.py` runs the protected-path guard, validates every edit's `old_string` against current content, then writes atomically in that order. `.claude/settings.json` also denies `Bash(git apply:*)`, so a hand-crafted diff is not a shorter path. This is not an OS-level boundary: the orchestrator holds Edit/Write directly and could evade it deliberately. See `SECURITY.md`.
 - **Two human gates + a protected evaluator.** The loop blocks at Gate 1 (approve the proposal) and Gate 2 (approve the exact tested patch after the app's `[app].evaluator` runs). The implementer may never edit paths in `[protected].paths` (held-out evaluator, gold, fixtures, `runs/`) — `check_protected_paths.py` enforces this and fails closed if no config resolves. It may never *read* paths in `[protected].unreadable` — `check_readable.py` enforces that, walks a grepped directory rather than matching its name so gold cannot be reached through a parent, and treats a call naming no path as the working directory — the tool's own default target, and the cheapest reach of all.
 - **The loop measures itself.** Every cycle writes one delivery record via `cycle_log.py`: phase wall-clock, `agent_seconds` (every phase with no operator in it), outcome, resubmissions, submission size, evaluator calls, metric deltas. Human decision time is *not* recorded: a gate span runs from the previous mark to the human's answer, so it also contains the orchestrator composing proposals or rendering the diff, and nothing marks the boundary — a "human minutes" number from that span would be agent time wearing a human label. CI recomputes the published economics from the committed records and fails on drift. **Every config appends to one log**, because cost per accepted change is a property of the loop, not of a source, and a per-config log would split that sample across the very number the repo publishes. Metric keys carry the source instead (`fullcontact.schema_f1`), so a per-source claim is derived by grouping; a CI check that hardcodes one source breaks the moment a second is onboarded. A control firing (`regression-blocked`, `guard-rejected`, `validation-failed`, `tests-failed`) is a distinct outcome from a human declining (`reverted`). The model marks phase boundaries; it never computes a duration or copies a score. Token cost is deliberately not recorded — no reliable per-subagent count exists, and an invented one would undermine every other number.

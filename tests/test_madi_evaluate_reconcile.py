@@ -64,7 +64,7 @@ def test_main_includes_reconcile(capsys):
 def test_main_appends_to_eval_log_when_set(tmp_path, monkeypatch, capsys):
     import json
     log = tmp_path / "eval_log.jsonl"
-    monkeypatch.setenv("FLYWHEEL_EVAL_LOG", str(log))
+    monkeypatch.setenv("RATCHET_EVAL_LOG", str(log))
     E.main([])
     E.main([])
     capsys.readouterr()
@@ -75,7 +75,7 @@ def test_main_appends_to_eval_log_when_set(tmp_path, monkeypatch, capsys):
 
 
 def test_main_skips_eval_log_when_unset(tmp_path, monkeypatch, capsys):
-    monkeypatch.delenv("FLYWHEEL_EVAL_LOG", raising=False)
+    monkeypatch.delenv("RATCHET_EVAL_LOG", raising=False)
     E.main([])
     capsys.readouterr()
     assert not (tmp_path / "eval_log.jsonl").exists()

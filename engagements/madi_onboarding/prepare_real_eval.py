@@ -4,14 +4,14 @@ against the benchmark's own schema-matching gold — with no new loader.
 
 This is the real-data **test** split: synthetic fixtures/ stays the loop's dev
 split (fast, deterministic, scored every cycle at Gate 2); data/madi/ is scored
-only when this script's output is explicitly pointed at (flywheel.real.toml),
+only when this script's output is explicitly pointed at (ratchet.real.toml),
 and the loop never sees it during an ordinary cycle.
 
 This script legitimately reads real gold (sm_mapping_gold.json) to build
 gold_mapping.json — that is its whole job, the same way evaluate.py's own
 author had to see the synthetic gold_records.jsonl's shape to write the
 scorer in the first place. It is PROTECTED (`[protected].paths` in
-flywheel.real.toml): the implementer must never run or edit it, and its
+ratchet.real.toml): the implementer must never run or edit it, and its
 output already matches the existing `**/gold_*.json` deny glob, so it needs
 no new protection rule.
 

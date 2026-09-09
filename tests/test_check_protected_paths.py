@@ -71,9 +71,9 @@ def test_no_globs_means_nothing_protected(tmp_path, monkeypatch):
 def test_engagement_config_protects_loop_machinery():
     # The engagement must forbid editing its own config and orchestration, or the
     # loop could disable the evaluator or weaken the guard itself.
-    cfg = tomllib.loads((Path(__file__).resolve().parent.parent / BASE / "flywheel.toml").read_text())
+    cfg = tomllib.loads((Path(__file__).resolve().parent.parent / BASE / "ratchet.toml").read_text())
     globs = cfg["protected"]["paths"]
-    assert C.protected_hits([f"{BASE}/flywheel.toml"], globs)          # the config declaring the evaluator
+    assert C.protected_hits([f"{BASE}/ratchet.toml"], globs)          # the config declaring the evaluator
     assert C.protected_hits(["scripts/check_protected_paths.py"], globs)  # the guard
     assert C.protected_hits([".claude/skills/dev-loop/SKILL.md"], globs)  # the orchestrator
     assert C.protected_hits([EVALUATOR], globs)
@@ -117,43 +117,43 @@ def test_rejects_when_no_config_resolves(tmp_path, monkeypatch):
     assert C.main([str(editsfile)]) == 2
 
 
-def test_missing_flywheel_config_env_is_rejected_not_defaulted(tmp_path, monkeypatch):
-    monkeypatch.setenv("FLYWHEEL_CONFIG", str(tmp_path / "does-not-exist.toml"))
+def test_missing_ratchet_config_env_is_rejected_not_defaulted(tmp_path, monkeypatch):
+    monkeypatch.setenv("RATCHET_CONFIG", str(tmp_path / "does-not-exist.toml"))
     assert C._resolve_config_or_reject() is None
 
 
 def test_no_config_at_all_is_rejected(tmp_path, monkeypatch):
-    monkeypatch.delenv("FLYWHEEL_CONFIG", raising=False)
+    monkeypatch.delenv("RATCHET_CONFIG", raising=False)
     monkeypatch.setattr(C, "config_path", lambda: tmp_path / "nope.toml")
     assert C._resolve_config_or_reject() is None
 
 
 def test_existing_config_with_empty_protected_list_passes(tmp_path, monkeypatch):
-    cfg = tmp_path / "flywheel.toml"
+    cfg = tmp_path / "ratchet.toml"
     cfg.write_text("[protected]\npaths = []\n")
-    monkeypatch.setenv("FLYWHEEL_CONFIG", str(cfg))
+    monkeypatch.setenv("RATCHET_CONFIG", str(cfg))
     editsfile = _write_edits(tmp_path, _edits(EVALUATOR))
     assert C.main([str(editsfile)]) == 0
 
 
 def test_end_to_end_rejects_evaluator_edit_with_real_engagement_config(tmp_path, monkeypatch):
-    eng_cfg = Path(__file__).resolve().parent.parent / BASE / "flywheel.toml"
-    monkeypatch.setenv("FLYWHEEL_CONFIG", str(eng_cfg))
+    eng_cfg = Path(__file__).resolve().parent.parent / BASE / "ratchet.toml"
+    monkeypatch.setenv("RATCHET_CONFIG", str(eng_cfg))
     editsfile = _write_edits(tmp_path, _edits(EVALUATOR))
     assert C.main([str(editsfile)]) == 2
 
 
 def test_malformed_edits_json_fails_closed(tmp_path, monkeypatch):
-    eng_cfg = Path(__file__).resolve().parent.parent / BASE / "flywheel.toml"
-    monkeypatch.setenv("FLYWHEEL_CONFIG", str(eng_cfg))
+    eng_cfg = Path(__file__).resolve().parent.parent / BASE / "ratchet.toml"
+    monkeypatch.setenv("RATCHET_CONFIG", str(eng_cfg))
     editsfile = tmp_path / "edits.json"
     editsfile.write_text("not json")
     assert C.main([str(editsfile)]) == 2
 
 
 def test_edits_file_must_be_a_json_list(tmp_path, monkeypatch):
-    eng_cfg = Path(__file__).resolve().parent.parent / BASE / "flywheel.toml"
-    monkeypatch.setenv("FLYWHEEL_CONFIG", str(eng_cfg))
+    eng_cfg = Path(__file__).resolve().parent.parent / BASE / "ratchet.toml"
+    monkeypatch.setenv("RATCHET_CONFIG", str(eng_cfg))
     editsfile = tmp_path / "edits.json"
     editsfile.write_text(json.dumps({"file": EVALUATOR}))  # a dict, not a list
     assert C.main([str(editsfile)]) == 2

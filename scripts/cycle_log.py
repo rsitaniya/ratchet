@@ -49,7 +49,7 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-from flywheel_config import get_value
+from ratchet_config import get_value
 
 IN_PROGRESS = Path(".dev_loop_cycle.json")
 
@@ -332,7 +332,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--edits", default=None, help="the implementer's edits JSON, for submission size")
     p.add_argument("--evaluate", default=None, help="this cycle's evaluator JSON")
     p.add_argument("--baseline", default=None, help="the pre-cycle evaluator JSON")
-    p.add_argument("--eval-log", default=None, help="$FLYWHEEL_EVAL_LOG for this cycle")
+    p.add_argument("--eval-log", default=None, help="$RATCHET_EVAL_LOG for this cycle")
     p.add_argument("--log", default=None)
     p.set_defaults(fn=cmd_finish)
 

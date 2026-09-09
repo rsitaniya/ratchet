@@ -31,15 +31,15 @@ agent (or this skill's author) could have seen it.
 
 1. `git status --porcelain` must be empty. Trials revert the tree after every
    run; a dirty tree means reverting could destroy real uncommitted work.
-2. `FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.real.toml` must
-   resolve (`uv run python scripts/flywheel_config.py --get app.module`), and
+2. `RATCHET_CONFIG=engagements/madi_onboarding/ratchet.real.toml` must
+   resolve (`uv run python scripts/ratchet_config.py --get app.module`), and
    must be set in **Claude Code's own environment**, not just exported inside a
    Bash step. The implementer's read-guard hook inherits Claude Code's
    environment; a Bash `export` does not reach it, and the guard then fails
    closed on every read the implementer makes. Verify with a bare
-   `[ -n "$FLYWHEEL_CONFIG" ]` in a Bash call that exports nothing first. If it
+   `[ -n "$RATCHET_CONFIG" ]` in a Bash call that exports nothing first. If it
    is unset, exit and relaunch as
-   `export FLYWHEEL_CONFIG=... && claude`.
+   `export RATCHET_CONFIG=... && claude`.
 3. `engagements/madi_onboarding/adapters_real/forbes.toml` must be at an empty
    baseline (`source = "forbes"` with no `[fields.*]` entries) before the
    first trial starts — every trial starts from the same point, or the
@@ -49,7 +49,7 @@ agent (or this skill's author) could have seen it.
    and confirm with `git diff` that only this file changed before starting.
    Never commit the emptied file — restore it at the end (see "After all N
    trials").
-4. The preconditions in `flywheel.real.toml`'s own header comment
+4. The preconditions in `ratchet.real.toml`'s own header comment
    (`download_data.py`, `csv_to_ingest.py --source forbes`,
    `prepare_real_eval.py`) must already have been run, so
    `engagements/madi_onboarding/data/madi/` exists.
@@ -65,9 +65,9 @@ agent (or this skill's author) could have seen it.
 Repeat the following for `trial = 1..N`. Set once per trial, unset after:
 
 ```bash
-export FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.real.toml
-export FLYWHEEL_EVAL_LOG="/tmp/dev-loop-trial-${trial}.eval_log.jsonl"
-rm -f "$FLYWHEEL_EVAL_LOG"
+export RATCHET_CONFIG=engagements/madi_onboarding/ratchet.real.toml
+export RATCHET_EVAL_LOG="/tmp/dev-loop-trial-${trial}.eval_log.jsonl"
+rm -f "$RATCHET_EVAL_LOG"
 ```
 
 Every cycle inside a trial opens and closes a delivery record, exactly as
@@ -85,7 +85,7 @@ evaluator score:
 
 ```bash
 [ -z "$(git status --porcelain)" ] || { echo "ABORT: dirty tree before trial $trial"; exit 1; }
-EVALUATOR=$(uv run python scripts/flywheel_config.py --get app.evaluator)
+EVALUATOR=$(uv run python scripts/ratchet_config.py --get app.evaluator)
 rm -f ".dev_loop_trial_baseline.json"
 eval "$EVALUATOR" > .dev_loop_trial_baseline.json
 ```
@@ -159,7 +159,7 @@ For `cycle = 1..5`, or until convergence:
      --edits <this cycle's edits tempfile> \
      --evaluate .dev_loop_trial_evaluate.json \
      --baseline .dev_loop_trial_baseline.json \
-     --eval-log "$FLYWHEEL_EVAL_LOG"
+     --eval-log "$RATCHET_EVAL_LOG"
    ```
    An auto-gated cycle still records `gate1`/`gate2` marks, and their durations
    are near zero by construction. That is the point: it is what a human-gated
@@ -246,7 +246,7 @@ agentic system, not just a harness for one.
   deliberate, separate, human-run `/dev-loop` cycle, not an artifact of this
   skill.
 - **Real forbes, not synthetic.** This skill targets
-  `flywheel.real.toml` / `adapters_real/` by design — the synthetic dev
+  `ratchet.real.toml` / `adapters_real/` by design — the synthetic dev
   fixtures already have committed, human-observed converged cycles
   (`runs/forbes/`), which would make a "does the agent converge it" measurement
   meaningless.

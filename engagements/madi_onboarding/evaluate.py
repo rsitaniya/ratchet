@@ -326,9 +326,9 @@ def main(argv: list[str] | None = None) -> None:
     print(json.dumps(result, indent=2))
 
     # Evaluator-invocation budget as a mechanism, not orchestrator prose: an
-    # agent measurement run (Phase 3) sets FLYWHEEL_EVAL_LOG and reads this back
+    # agent measurement run (Phase 3) sets RATCHET_EVAL_LOG and reads this back
     # to report how many times the oracle was consulted per trial.
-    log_path = os.environ.get("FLYWHEEL_EVAL_LOG")
+    log_path = os.environ.get("RATCHET_EVAL_LOG")
     if log_path:
         with open(log_path, "a") as f:
             f.write(json.dumps({
