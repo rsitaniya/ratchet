@@ -1,9 +1,9 @@
 # Real-data TEST split of the same engagement: scores adapters against MaDI-Bench's
 # fullcontact CSV (anonymized Attribute_1..6 columns, no header names) and its own
 # schema-matching gold, instead of the synthetic fixtures/ used every dev cycle
-# (flywheel.toml) or real forbes' self-descriptive columns (flywheel.real.toml).
+# (ratchet.toml) or real forbes' self-descriptive columns (ratchet.real.toml).
 # Selected the same way:
-#   export FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.real_fullcontact.toml
+#   export RATCHET_CONFIG=engagements/madi_onboarding/ratchet.real_fullcontact.toml
 #
 # fullcontact is the harder real split: forbes' 5/5 convergence trials never
 # exercised genuine column ambiguity (its columns self-describe the target).
@@ -29,7 +29,7 @@ evaluator = "python engagements/madi_onboarding/evaluate.py --fixtures engagemen
 analyzer = "python engagements/madi_onboarding/analyze_integration.py --source fullcontact"
 
 [protected]
-# Same reasons as flywheel.real.toml, plus this file itself.
+# Same reasons as ratchet.real.toml, plus this file itself.
 paths = [
     "**/evaluate.py",
     "**/adapters.py", "**/matching.py", "**/fusion.py",
@@ -37,7 +37,7 @@ paths = [
     "**/fixtures/**",
     "**/gold_*.json", "**/*_gold.json",
     "**/gold_*.jsonl", "**/*_gold.jsonl",
-    "**/flywheel.toml", "**/flywheel.real.toml", "**/flywheel.real_fullcontact.toml",
+    "**/ratchet.toml", "**/ratchet.real.toml", "**/ratchet.real_fullcontact.toml",
     "scripts/**",
     ".claude/**",
     # Receipts are the evidence a reviewer checks, so the implementer must not be
@@ -49,7 +49,7 @@ paths = [
 ]
 
 # Read boundary (check_readable.py, hooked into the implementer subagent only).
-# Same reasoning as flywheel.real.toml: data/madi/sources/*.jsonl stays READABLE
+# Same reasoning as ratchet.real.toml: data/madi/sources/*.jsonl stays READABLE
 # because the implementer needs real column values to guess the mapping — with
 # anonymized headers, record values are the *only* signal available. No value
 # gold exists for this split to leak through them.

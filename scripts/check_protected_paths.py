@@ -2,7 +2,7 @@
 """Reject a set of edits that touches protected paths (deterministic Gate-4.1 check).
 
 The dev-loop orchestrator runs this before applying the implementer's edits. It
-reads the protected globs from the active flywheel.toml (`[protected].paths`)
+reads the protected globs from the active ratchet.toml (`[protected].paths`)
 and exits non-zero if any edit's `file` matches. Protected paths are held-out
 evaluators, gold labels, fixtures, prior receipts, engines, and scoring — the
 things the loop must never edit to make its own metrics pass.
@@ -16,7 +16,7 @@ nothing to detect for any of them — the implementer simply cannot express "mov
 this protected file somewhere the globs don't cover" or "write through a
 symlink into a protected directory" in this format at all.
 
-The guard also refuses to run at all if no flywheel.toml resolves — a missing
+The guard also refuses to run at all if no ratchet.toml resolves — a missing
 config is not the same thing as a config that declares nothing protected, and
 blessing a submission because no one configured protection would be the same
 failure mode as a bypassed check.
@@ -34,7 +34,7 @@ import json
 import sys
 from pathlib import Path
 
-from flywheel_config import config_path, get_value
+from ratchet_config import config_path, get_value
 
 
 def touched_paths(edits: list[dict], repo_root: Path) -> list[str]:
@@ -85,11 +85,11 @@ def protected_hits(paths: list[str], globs: list[str]) -> list[tuple[str, str]]:
 def _resolve_config_or_reject() -> Path | None:
     """Resolve the active config, or print a REJECTED message and return None.
 
-    Stricter than flywheel_config.load_config()'s own permissiveness: a missing
+    Stricter than ratchet_config.load_config()'s own permissiveness: a missing
     config there is a supported "no app selected" mode for tools like the
     simulator. The guard's job is different — it must never bless a submission
     because no one is enforcing anything, so it insists a real config file
-    resolved, whether that would come from $FLYWHEEL_CONFIG or the repo-root
+    resolved, whether that would come from $RATCHET_CONFIG or the repo-root
     default.
     """
     try:
@@ -98,8 +98,8 @@ def _resolve_config_or_reject() -> Path | None:
         print(f"REJECTED: {e}", file=sys.stderr)
         return None
     if not cfg.exists():
-        print(f"REJECTED: no flywheel.toml resolved (looked for {cfg}).", file=sys.stderr)
-        print("  Set FLYWHEEL_CONFIG to the active engagement's config so the", file=sys.stderr)
+        print(f"REJECTED: no ratchet.toml resolved (looked for {cfg}).", file=sys.stderr)
+        print("  Set RATCHET_CONFIG to the active engagement's config so the", file=sys.stderr)
         print("  protected-path list can be resolved. An empty [protected].paths is a", file=sys.stderr)
         print("  valid, explicit choice; a missing config is not the same thing.", file=sys.stderr)
         return None

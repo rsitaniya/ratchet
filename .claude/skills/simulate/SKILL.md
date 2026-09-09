@@ -7,21 +7,21 @@ allowed-tools: Bash, Read
 # Simulator Skill
 
 Run the schema-driven simulator against the running FastAPI app. Which app,
-base URL, and usage-log path all come from the active `flywheel.toml` (selected
-by `$FLYWHEEL_CONFIG`, else the repo-root file) — nothing here is app-specific.
+base URL, and usage-log path all come from the active `ratchet.toml` (selected
+by `$RATCHET_CONFIG`, else the repo-root file) — nothing here is app-specific.
 
 ## Steps
 
 ### 1. Verify the server is running
 
 ```bash
-BASE_URL=$(uv run python scripts/flywheel_config.py --get app.base_url)
+BASE_URL=$(uv run python scripts/ratchet_config.py --get app.base_url)
 curl -s "$BASE_URL/health"
 ```
 
 If the server is not running, tell the user:
 > The API server is not running. Start it with:
-> `export USAGE_LOG_PATH=$(uv run python scripts/flywheel_config.py --get app.usage_log); uvicorn "$(uv run python scripts/flywheel_config.py --get app.module)" --reload`
+> `export USAGE_LOG_PATH=$(uv run python scripts/ratchet_config.py --get app.usage_log); uvicorn "$(uv run python scripts/ratchet_config.py --get app.module)" --reload`
 > Then invoke `/simulate` again.
 
 Do not proceed if the server is unreachable.
@@ -29,7 +29,7 @@ Do not proceed if the server is unreachable.
 ### 2. Show the current schema paths
 
 ```bash
-BASE_URL=$(uv run python scripts/flywheel_config.py --get app.base_url)
+BASE_URL=$(uv run python scripts/ratchet_config.py --get app.base_url)
 curl -s "$BASE_URL/openapi.json" | uv run python3 -c "
 import json, sys
 schema = json.load(sys.stdin)
@@ -62,7 +62,7 @@ After the simulator finishes, report:
 - Current line count in the usage log
 
 ```bash
-LOG=$(uv run python scripts/flywheel_config.py --get app.usage_log)
+LOG=$(uv run python scripts/ratchet_config.py --get app.usage_log)
 wc -l "$LOG" 2>/dev/null || echo "usage log not yet created: $LOG"
 ```
 

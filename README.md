@@ -1,12 +1,12 @@
-# dev-flywheel
+# ratchet
 
 **A controlled delivery loop for agent-assisted integration work.**
 
-[![CI](https://github.com/rsitaniya/dev-flywheel/actions/workflows/ci.yml/badge.svg)](https://github.com/rsitaniya/dev-flywheel/actions/workflows/ci.yml)
+[![CI](https://github.com/rsitaniya/ratchet/actions/workflows/ci.yml/badge.svg)](https://github.com/rsitaniya/ratchet/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 
-A request can succeed while the integration is wrong. A source can be mapped correctly while its records still fail to match the same entities elsewhere. `dev-flywheel` turns those observed gaps into scoped, evaluated changes with two human approval gates.
+A request can succeed while the integration is wrong. A source can be mapped correctly while its records still fail to match the same entities elsewhere. `ratchet` turns those observed gaps into scoped, evaluated changes with two human approval gates.
 
 The reference engagement is a partner-data API. It demonstrates one delivery loop across two decisions:
 

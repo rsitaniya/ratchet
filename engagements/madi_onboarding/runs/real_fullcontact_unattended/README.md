@@ -4,7 +4,7 @@
 its mapping result, which stands. Its *delivery timings* do not, which is why it
 was re-run rather than published.
 
-`flywheel.real_fullcontact.toml` selects MaDI-Bench's 1,931-record fullcontact
+`ratchet.real_fullcontact.toml` selects MaDI-Bench's 1,931-record fullcontact
 CSV, whose columns are anonymized to `Attribute_1..6`. No header carries meaning,
 so the mapping has to be inferred from record values — this is the harder of the
 two real splits.
@@ -67,7 +67,7 @@ transcribed. For any cycle:
 ```bash
 git worktree add --detach /tmp/wt <commit>
 cd /tmp/wt
-FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.real_fullcontact.toml \
+RATCHET_CONFIG=engagements/madi_onboarding/ratchet.real_fullcontact.toml \
 uv run python engagements/madi_onboarding/evaluate.py \
   --fixtures <repo>/engagements/madi_onboarding/data/madi \
   --adapters /tmp/wt/engagements/madi_onboarding/adapters_real --sources fullcontact

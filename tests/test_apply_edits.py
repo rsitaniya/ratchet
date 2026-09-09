@@ -23,9 +23,9 @@ def _write_edits(repo, edits: list[dict]):
 def test_guard_rejection_blocks_apply(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     _init_repo(repo, {"evaluate.py": "old\n"})
-    cfg = repo / "flywheel.toml"
+    cfg = repo / "ratchet.toml"
     cfg.write_text('[protected]\npaths = ["**/evaluate.py"]\n')
-    monkeypatch.setenv("FLYWHEEL_CONFIG", str(cfg))
+    monkeypatch.setenv("RATCHET_CONFIG", str(cfg))
     monkeypatch.chdir(repo)
 
     editsfile = _write_edits(repo, [{"file": "evaluate.py", "old_string": "old\n", "new_string": "new\n"}])
@@ -36,9 +36,9 @@ def test_guard_rejection_blocks_apply(tmp_path, monkeypatch):
 def test_clean_edit_applies(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     _init_repo(repo, {"adapter.toml": "old\n"})
-    cfg = repo / "flywheel.toml"
+    cfg = repo / "ratchet.toml"
     cfg.write_text('[protected]\npaths = ["**/evaluate.py"]\n')
-    monkeypatch.setenv("FLYWHEEL_CONFIG", str(cfg))
+    monkeypatch.setenv("RATCHET_CONFIG", str(cfg))
     monkeypatch.chdir(repo)
 
     editsfile = _write_edits(repo, [{"file": "adapter.toml", "old_string": "old\n", "new_string": "new\n"}])
@@ -49,9 +49,9 @@ def test_clean_edit_applies(tmp_path, monkeypatch):
 def test_new_file_creation(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     _init_repo(repo, {"README.md": "x\n"})
-    cfg = repo / "flywheel.toml"
+    cfg = repo / "ratchet.toml"
     cfg.write_text("[protected]\npaths = []\n")
-    monkeypatch.setenv("FLYWHEEL_CONFIG", str(cfg))
+    monkeypatch.setenv("RATCHET_CONFIG", str(cfg))
     monkeypatch.chdir(repo)
 
     editsfile = _write_edits(
@@ -64,9 +64,9 @@ def test_new_file_creation(tmp_path, monkeypatch):
 def test_old_string_not_found_rejects_without_writing(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     _init_repo(repo, {"adapter.toml": "different content entirely\n"})
-    cfg = repo / "flywheel.toml"
+    cfg = repo / "ratchet.toml"
     cfg.write_text("[protected]\npaths = []\n")
-    monkeypatch.setenv("FLYWHEEL_CONFIG", str(cfg))
+    monkeypatch.setenv("RATCHET_CONFIG", str(cfg))
     monkeypatch.chdir(repo)
 
     editsfile = _write_edits(repo, [{"file": "adapter.toml", "old_string": "old\n", "new_string": "new\n"}])
@@ -77,9 +77,9 @@ def test_old_string_not_found_rejects_without_writing(tmp_path, monkeypatch):
 def test_old_string_not_unique_rejects(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     _init_repo(repo, {"adapter.toml": "x\nx\n"})
-    cfg = repo / "flywheel.toml"
+    cfg = repo / "ratchet.toml"
     cfg.write_text("[protected]\npaths = []\n")
-    monkeypatch.setenv("FLYWHEEL_CONFIG", str(cfg))
+    monkeypatch.setenv("RATCHET_CONFIG", str(cfg))
     monkeypatch.chdir(repo)
 
     editsfile = _write_edits(repo, [{"file": "adapter.toml", "old_string": "x\n", "new_string": "y\n"}])
@@ -90,9 +90,9 @@ def test_old_string_not_unique_rejects(tmp_path, monkeypatch):
 def test_create_on_existing_file_rejects(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     _init_repo(repo, {"adapter.toml": "already here\n"})
-    cfg = repo / "flywheel.toml"
+    cfg = repo / "ratchet.toml"
     cfg.write_text("[protected]\npaths = []\n")
-    monkeypatch.setenv("FLYWHEEL_CONFIG", str(cfg))
+    monkeypatch.setenv("RATCHET_CONFIG", str(cfg))
     monkeypatch.chdir(repo)
 
     editsfile = _write_edits(repo, [{"file": "adapter.toml", "old_string": "", "new_string": "overwrite\n"}])
@@ -105,9 +105,9 @@ def test_one_bad_edit_rejects_the_whole_batch_atomically(tmp_path, monkeypatch):
     # should land — a submission is all-or-nothing, not partially applied.
     repo = tmp_path / "repo"
     _init_repo(repo, {"a.toml": "a-old\n", "b.toml": "b-old\n"})
-    cfg = repo / "flywheel.toml"
+    cfg = repo / "ratchet.toml"
     cfg.write_text("[protected]\npaths = []\n")
-    monkeypatch.setenv("FLYWHEEL_CONFIG", str(cfg))
+    monkeypatch.setenv("RATCHET_CONFIG", str(cfg))
     monkeypatch.chdir(repo)
 
     editsfile = _write_edits(repo, [
@@ -122,9 +122,9 @@ def test_one_bad_edit_rejects_the_whole_batch_atomically(tmp_path, monkeypatch):
 def test_sequential_edits_to_the_same_file(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     _init_repo(repo, {"adapter.toml": "line1\nline2\n"})
-    cfg = repo / "flywheel.toml"
+    cfg = repo / "ratchet.toml"
     cfg.write_text("[protected]\npaths = []\n")
-    monkeypatch.setenv("FLYWHEEL_CONFIG", str(cfg))
+    monkeypatch.setenv("RATCHET_CONFIG", str(cfg))
     monkeypatch.chdir(repo)
 
     editsfile = _write_edits(repo, [
@@ -138,9 +138,9 @@ def test_sequential_edits_to_the_same_file(tmp_path, monkeypatch):
 def test_path_escaping_repo_root_rejected(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     _init_repo(repo, {"adapter.toml": "old\n"})
-    cfg = repo / "flywheel.toml"
+    cfg = repo / "ratchet.toml"
     cfg.write_text("[protected]\npaths = []\n")
-    monkeypatch.setenv("FLYWHEEL_CONFIG", str(cfg))
+    monkeypatch.setenv("RATCHET_CONFIG", str(cfg))
     monkeypatch.chdir(repo)
 
     editsfile = _write_edits(repo, [{"file": "../outside.toml", "old_string": "", "new_string": "x\n"}])
@@ -151,7 +151,7 @@ def test_path_escaping_repo_root_rejected(tmp_path, monkeypatch):
 def test_no_config_blocks_apply(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     _init_repo(repo, {"adapter.toml": "old\n"})
-    monkeypatch.delenv("FLYWHEEL_CONFIG", raising=False)
+    monkeypatch.delenv("RATCHET_CONFIG", raising=False)
     monkeypatch.chdir(repo)
     monkeypatch.setattr("check_protected_paths.config_path", lambda: repo / "nope.toml")
 
@@ -163,9 +163,9 @@ def test_no_config_blocks_apply(tmp_path, monkeypatch):
 def test_malformed_edits_json_rejected(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     _init_repo(repo, {"adapter.toml": "old\n"})
-    cfg = repo / "flywheel.toml"
+    cfg = repo / "ratchet.toml"
     cfg.write_text("[protected]\npaths = []\n")
-    monkeypatch.setenv("FLYWHEEL_CONFIG", str(cfg))
+    monkeypatch.setenv("RATCHET_CONFIG", str(cfg))
     monkeypatch.chdir(repo)
 
     editsfile = repo / "edits.json"

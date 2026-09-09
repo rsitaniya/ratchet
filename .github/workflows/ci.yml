@@ -51,7 +51,7 @@ jobs:
     name: madi onboarding engagement (oracle-backed)
     runs-on: ubuntu-latest
     env:
-      FLYWHEEL_CONFIG: engagements/madi_onboarding/flywheel.toml
+      RATCHET_CONFIG: engagements/madi_onboarding/ratchet.toml
     steps:
       - uses: actions/checkout@v4
 
@@ -68,10 +68,10 @@ jobs:
       # The second app runs off the SAME generic loop, selected purely by config.
       - name: Build replay and start the ingest app (via the config accessor)
         run: |
-          export USAGE_LOG_PATH=$(uv run python scripts/flywheel_config.py --get app.usage_log)
+          export USAGE_LOG_PATH=$(uv run python scripts/ratchet_config.py --get app.usage_log)
           echo "USAGE_LOG_PATH=$USAGE_LOG_PATH" >> "$GITHUB_ENV"
           uv run python engagements/madi_onboarding/to_replay.py --source forbes
-          uv run uvicorn "$(uv run python scripts/flywheel_config.py --get app.module)" --port 8000 &
+          uv run uvicorn "$(uv run python scripts/ratchet_config.py --get app.module)" --port 8000 &
           for _ in $(seq 1 40); do curl -sf http://localhost:8000/health && break; sleep 0.25; done
 
       - name: Replay the new source and rank integration gaps
@@ -79,8 +79,8 @@ jobs:
           uv run python scripts/simulate.py --run-id ci-baseline
           uv run python engagements/madi_onboarding/analyze_integration.py "$USAGE_LOG_PATH" --source forbes
 
-      # Proves the claim the whole project rests on: with FLYWHEEL_CONFIG unset,
-      # flywheel_config.py falls back to defaults (no replay file declared), and
+      # Proves the claim the whole project rests on: with RATCHET_CONFIG unset,
+      # ratchet_config.py falls back to defaults (no replay file declared), and
       # the simulator still discovers and exercises this real, non-trivial app's
       # endpoints from /openapi.json alone. Most synthesized requests 422 (schema-random values don't match
       # a real record) — that's expected and fine; simulate.py always exits 0
@@ -90,7 +90,7 @@ jobs:
       # /reconcile never actually reaching the live app under this run's traffic.
       - name: Verify zero-domain-config discovery against the live engagement app
         run: |
-          OUT=$(env -u FLYWHEEL_CONFIG uv run python scripts/simulate.py http://localhost:8000 5 --run-id ci-zero-config)
+          OUT=$(env -u RATCHET_CONFIG uv run python scripts/simulate.py http://localhost:8000 5 --run-id ci-zero-config)
           echo "$OUT"
           if echo "$OUT" | grep -q '\] EXC '; then
             echo "ERROR: a request failed at the transport level (EXC), not just a legitimate HTTP error status"
@@ -230,17 +230,17 @@ jobs:
           json.dump([{'file': 'engagements/madi_onboarding/runs/real_fullcontact/99_forged.evaluate.json', 'old_string': '', 'new_string': '{}'}], open('/tmp/forged_receipt.json', 'w'))
           json.dump([{'file': 'engagements/madi_onboarding/adapters_real/fullcontact.toml', 'old_string': 'x', 'new_string': 'y'}], open('/tmp/legit_adapter.json', 'w'))
           "
-          for cfg in engagements/madi_onboarding/flywheel.toml \
-                     engagements/madi_onboarding/flywheel.real.toml \
-                     engagements/madi_onboarding/flywheel.real_fullcontact.toml; do
-            if FLYWHEEL_CONFIG=$cfg uv run python scripts/check_protected_paths.py /tmp/forged_receipt.json; then
+          for cfg in engagements/madi_onboarding/ratchet.toml \
+                     engagements/madi_onboarding/ratchet.real.toml \
+                     engagements/madi_onboarding/ratchet.real_fullcontact.toml; do
+            if RATCHET_CONFIG=$cfg uv run python scripts/check_protected_paths.py /tmp/forged_receipt.json; then
               echo "ERROR: $cfg would let the implementer author a receipt under runs/"; exit 1
             fi
             echo "correctly rejected under $cfg"
           done
           # The guard must still pass the file the loop actually exists to edit,
           # or "protected" has just become "nothing can be changed".
-          if ! FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.real_fullcontact.toml \
+          if ! RATCHET_CONFIG=engagements/madi_onboarding/ratchet.real_fullcontact.toml \
                uv run python scripts/check_protected_paths.py /tmp/legit_adapter.json; then
             echo "ERROR: the guard now rejects a legitimate adapter edit"; exit 1
           fi
@@ -279,7 +279,7 @@ jobs:
           allow "the app source it edits against" \
             '{"tool_name":"Read","tool_input":{"file_path":"engagements/madi_onboarding/app/main.py"}}'
           if echo '{"tool_name":"Read","tool_input":{"file_path":"README.md"}}' \
-             | env -u FLYWHEEL_CONFIG uv run python scripts/check_readable.py 2>/dev/null; then
+             | env -u RATCHET_CONFIG uv run python scripts/check_readable.py 2>/dev/null; then
             echo "ERROR: read guard did not fail closed with no config"; exit 1
           fi
           echo "correctly failed closed with no config"

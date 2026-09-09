@@ -3,7 +3,7 @@
 **Purpose:** onboard MaDI-Bench's `fullcontact` source from an empty adapter,
 through both human gates, with every cycle receipted.
 
-`flywheel.real_fullcontact.toml` selects the 1,931-record fullcontact CSV. Its
+`ratchet.real_fullcontact.toml` selects the 1,931-record fullcontact CSV. Its
 columns are anonymized to `Attribute_1..6`, so no header carries meaning and the
 mapping has to be inferred from record values. That makes it the harder of the
 two real splits — `forbes`' columns self-describe their target.
@@ -88,7 +88,7 @@ the change landed.
 ## Reproduce
 
 ```bash
-export FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.real_fullcontact.toml
+export RATCHET_CONFIG=engagements/madi_onboarding/ratchet.real_fullcontact.toml
 uv run python engagements/madi_onboarding/download_data.py
 uv run python engagements/madi_onboarding/csv_to_ingest.py --source fullcontact
 uv run python engagements/madi_onboarding/prepare_real_eval.py

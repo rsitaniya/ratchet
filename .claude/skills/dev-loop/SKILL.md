@@ -27,15 +27,15 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 ```
 
-Everything domain-specific comes from the active `flywheel.toml` (selected by
-`$FLYWHEEL_CONFIG`, else the repo-root file). Read the app module, base URL, and
+Everything domain-specific comes from the active `ratchet.toml` (selected by
+`$RATCHET_CONFIG`, else the repo-root file). Read the app module, base URL, and
 usage-log path from it rather than hardcoding — that is what lets this one loop
 drive any app.
 
 **Echo and confirm the resolved config before anything else runs.** A run with
 no config resolved has an empty `[protected].paths`, so `check_protected_paths.py`
 now refuses to bless any patch until a real config is confirmed (see STEP 4) —
-but that refusal should not be the operator's first signal that `$FLYWHEEL_CONFIG`
+but that refusal should not be the operator's first signal that `$RATCHET_CONFIG`
 was wrong or unset. Surface it up front instead:
 
 **First, check the config the way the implementer's hook will see it.** This is
@@ -48,22 +48,22 @@ including the app source it must read to produce any edits at all. Run this in a
 Bash call with no `export` before it, or it proves nothing:
 
 ```bash
-if [ -z "$FLYWHEEL_CONFIG" ]; then
-  echo "ABORT: FLYWHEEL_CONFIG is not set in Claude Code's own environment."
+if [ -z "$RATCHET_CONFIG" ]; then
+  echo "ABORT: RATCHET_CONFIG is not set in Claude Code's own environment."
   echo "  Every step below can still resolve it, but the implementer's read-guard"
   echo "  hook cannot — it will fail closed and deny every Read and Grep it makes,"
   echo "  including the app source it needs. Exit, export it, and relaunch:"
-  echo "    export FLYWHEEL_CONFIG=engagements/<name>/flywheel.toml && claude"
+  echo "    export RATCHET_CONFIG=engagements/<name>/ratchet.toml && claude"
   exit 1
 fi
-echo "Read guard will resolve: $FLYWHEEL_CONFIG"
+echo "Read guard will resolve: $RATCHET_CONFIG"
 ```
 
 ```bash
-if ! MODULE=$(uv run python scripts/flywheel_config.py --get app.module); then
-  echo "ABORT: could not resolve the active config (see error above). Check \$FLYWHEEL_CONFIG."; exit 1
+if ! MODULE=$(uv run python scripts/ratchet_config.py --get app.module); then
+  echo "ABORT: could not resolve the active config (see error above). Check \$RATCHET_CONFIG."; exit 1
 fi
-echo "Active config: ${FLYWHEEL_CONFIG:-<none set — falls back to defaults, no engagement selected>}"
+echo "Active config: ${RATCHET_CONFIG:-<none set — falls back to defaults, no engagement selected>}"
 echo "App module: $MODULE"
 ```
 
@@ -73,7 +73,7 @@ Gate-2 regression check in STEP 6 possible — without a baseline captured *befo
 the patch lands, there is nothing to compare against:
 
 ```bash
-EVALUATOR=$(uv run python scripts/flywheel_config.py --get app.evaluator)
+EVALUATOR=$(uv run python scripts/ratchet_config.py --get app.evaluator)
 rm -f .dev_loop_baseline.json
 if [ -n "$EVALUATOR" ]; then
   eval "$EVALUATOR" > .dev_loop_baseline.json   # eval, not bare $EVALUATOR — zsh does not word-split unquoted vars
@@ -98,7 +98,7 @@ uv run python scripts/cycle_log.py start --cycle "$CYCLE" --gates human
 Ensure the API server is running:
 
 ```bash
-BASE_URL=$(uv run python scripts/flywheel_config.py --get app.base_url)
+BASE_URL=$(uv run python scripts/ratchet_config.py --get app.base_url)
 curl -s "$BASE_URL/health" || echo "SERVER DOWN"
 ```
 
@@ -110,12 +110,12 @@ adapters dir and target schema, or the app silently serves the wrong split's
 adapters:
 
 ```bash
-export USAGE_LOG_PATH=$(uv run python scripts/flywheel_config.py --get app.usage_log)
-ADAPTERS_DIR_VAL=$(uv run python scripts/flywheel_config.py --get app.adapters_dir)
+export USAGE_LOG_PATH=$(uv run python scripts/ratchet_config.py --get app.usage_log)
+ADAPTERS_DIR_VAL=$(uv run python scripts/ratchet_config.py --get app.adapters_dir)
 [ -n "$ADAPTERS_DIR_VAL" ] && export ADAPTERS_DIR="$ADAPTERS_DIR_VAL"
-TARGET_SCHEMA_VAL=$(uv run python scripts/flywheel_config.py --get app.target_schema)
+TARGET_SCHEMA_VAL=$(uv run python scripts/ratchet_config.py --get app.target_schema)
 [ -n "$TARGET_SCHEMA_VAL" ] && export TARGET_SCHEMA_PATH="$TARGET_SCHEMA_VAL"
-uv run uvicorn "$(uv run python scripts/flywheel_config.py --get app.module)" --reload &
+uv run uvicorn "$(uv run python scripts/ratchet_config.py --get app.module)" --reload &
 sleep 2
 ```
 
@@ -128,7 +128,7 @@ uv run python scripts/simulate.py
 Show the current line count in the log:
 
 ```bash
-wc -l "$(uv run python scripts/flywheel_config.py --get app.usage_log)"
+wc -l "$(uv run python scripts/ratchet_config.py --get app.usage_log)"
 uv run python scripts/cycle_log.py mark simulate
 ```
 
@@ -142,10 +142,10 @@ example is gone along with that example, so `app.analyzer` is required, not
 optional:
 
 ```bash
-USAGE_LOG=$(uv run python scripts/flywheel_config.py --get app.usage_log)
-ANALYZER=$(uv run python scripts/flywheel_config.py --get app.analyzer)
+USAGE_LOG=$(uv run python scripts/ratchet_config.py --get app.usage_log)
+ANALYZER=$(uv run python scripts/ratchet_config.py --get app.analyzer)
 if [ -z "$ANALYZER" ]; then
-  echo "ABORT: [app].analyzer is not set in the active flywheel.toml."; exit 1
+  echo "ABORT: [app].analyzer is not set in the active ratchet.toml."; exit 1
 fi
 REPORT=$(eval "$ANALYZER" "$USAGE_LOG")
 uv run python scripts/cycle_log.py mark analyze
@@ -319,7 +319,7 @@ reading the actual diff are what catch that.
 
 1. **Run the app's evaluator, if it declares one, against the pre-cycle baseline STEP 1 captured.**
    ```bash
-   EVALUATOR=$(uv run python scripts/flywheel_config.py --get app.evaluator)
+   EVALUATOR=$(uv run python scripts/ratchet_config.py --get app.evaluator)
    if [ -n "$EVALUATOR" ]; then
      if [ -s .dev_loop_baseline.json ]; then
        eval "$EVALUATOR --baseline .dev_loop_baseline.json" | tee .dev_loop_evaluate.json
@@ -406,7 +406,7 @@ reading the actual diff are what catch that.
      --edits <the STEP 4 tempfile> \
      --evaluate .dev_loop_evaluate.json \
      --baseline .dev_loop_baseline.json \
-     ${FLYWHEEL_EVAL_LOG:+--eval-log "$FLYWHEEL_EVAL_LOG"}
+     ${RATCHET_EVAL_LOG:+--eval-log "$RATCHET_EVAL_LOG"}
    ```
    Swap `--outcome` for `reverted`, `regression-blocked`, `tests-failed`,
    `guard-rejected`, or `validation-failed` as the cycle actually ended. The
@@ -422,13 +422,13 @@ diff; for an engagement with a protected evaluator it is the real safety boundar
 ## STEP 7 — Restart server to reload new routes
 
 ```bash
-APP=$(uv run python scripts/flywheel_config.py --get app.module)
+APP=$(uv run python scripts/ratchet_config.py --get app.module)
 pkill -f "uvicorn $APP" 2>/dev/null || true
 sleep 1
-export USAGE_LOG_PATH=$(uv run python scripts/flywheel_config.py --get app.usage_log)
-ADAPTERS_DIR_VAL=$(uv run python scripts/flywheel_config.py --get app.adapters_dir)
+export USAGE_LOG_PATH=$(uv run python scripts/ratchet_config.py --get app.usage_log)
+ADAPTERS_DIR_VAL=$(uv run python scripts/ratchet_config.py --get app.adapters_dir)
 [ -n "$ADAPTERS_DIR_VAL" ] && export ADAPTERS_DIR="$ADAPTERS_DIR_VAL"
-TARGET_SCHEMA_VAL=$(uv run python scripts/flywheel_config.py --get app.target_schema)
+TARGET_SCHEMA_VAL=$(uv run python scripts/ratchet_config.py --get app.target_schema)
 [ -n "$TARGET_SCHEMA_VAL" ] && export TARGET_SCHEMA_PATH="$TARGET_SCHEMA_VAL"
 uv run uvicorn "$APP" --reload &
 sleep 2
@@ -437,7 +437,7 @@ sleep 2
 Verify the new endpoint/operation appears in the live schema:
 
 ```bash
-BASE_URL=$(uv run python scripts/flywheel_config.py --get app.base_url)
+BASE_URL=$(uv run python scripts/ratchet_config.py --get app.base_url)
 curl -s "$BASE_URL/openapi.json" | uv run python3 -c "
 import json, sys
 schema = json.load(sys.stdin)
@@ -454,7 +454,7 @@ for name, comp in schema.get('components', {}).get('schemas', {}).items():
 ## STEP 8 — Verify loop closure
 
 ```bash
-uv run python scripts/simulate.py "$(uv run python scripts/flywheel_config.py --get app.base_url)" 5
+uv run python scripts/simulate.py "$(uv run python scripts/ratchet_config.py --get app.base_url)" 5
 ```
 
 Confirm the new feature — **whatever its shape** — shows up in the simulator's discovery
@@ -533,11 +533,11 @@ to stop.
 - **Two human gates block the loop: STEP 3 (approve the proposal) and STEP 6
   (approve the exact tested tree).** All other steps chain automatically.
 - **`check_protected_paths.py` (run inside `apply_edits.py`) refuses to run at
-  all if no `flywheel.toml` resolves** — a missing config is not the same as a
+  all if no `ratchet.toml` resolves** — a missing config is not the same as a
   config that declares nothing protected, and blessing a submission because no
   one configured protection would be the guard's own version of the bug it
   exists to prevent. STEP 1 echoes the resolved config up front so this is
-  never the operator's first signal that `$FLYWHEEL_CONFIG` was wrong.
+  never the operator's first signal that `$RATCHET_CONFIG` was wrong.
 - **Continuous mode uses Claude Code's built-in `/loop` runner.** Use `/loop /dev-loop`; stop with Ctrl+C.
 - **Do not skip the test step.** A feature is not shipped until `uv run pytest tests/ -v`
   **and** `uv run ruff check .` both pass. Lint is not cosmetic here: it is the

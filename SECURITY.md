@@ -2,7 +2,7 @@
 
 **Reader:** a reviewer deciding what the local benchmark harness enforces and where that enforcement ends.
 
-`dev-flywheel` protects the integrity of a reviewed local workflow. It is not a multi-tenant service. Do not expose it to untrusted callers without separate authentication, authorization, rate limits, secret handling, telemetry controls, and operational hardening.
+`ratchet` protects the integrity of a reviewed local workflow. It is not a multi-tenant service. Do not expose it to untrusted callers without separate authentication, authorization, rate limits, secret handling, telemetry controls, and operational hardening.
 
 ## Security claim
 

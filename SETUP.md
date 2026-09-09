@@ -24,9 +24,9 @@ Expected result: tests pass and Ruff reports no findings.
 In terminal 1, select the synthetic development engagement and start the API:
 
 ```bash
-export FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.toml
-export USAGE_LOG_PATH=$(uv run python scripts/flywheel_config.py --get app.usage_log)
-uv run uvicorn "$(uv run python scripts/flywheel_config.py --get app.module)" --port 8000
+export RATCHET_CONFIG=engagements/madi_onboarding/ratchet.toml
+export USAGE_LOG_PATH=$(uv run python scripts/ratchet_config.py --get app.usage_log)
+uv run uvicorn "$(uv run python scripts/ratchet_config.py --get app.module)" --port 8000
 ```
 
 In terminal 2, create replay traffic, run it, then inspect the ranked gaps and evaluator result:
@@ -46,7 +46,7 @@ Export the engagement configuration **before** launching Claude Code, then run
 the loop:
 
 ```bash
-export FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.toml
+export RATCHET_CONFIG=engagements/madi_onboarding/ratchet.toml
 claude
 ```
 
@@ -74,7 +74,7 @@ uv run python scripts/cycle_log.py report
 The separate MaDI-Bench configuration is for measurement, not ordinary local development:
 
 ```bash
-export FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.real.toml
+export RATCHET_CONFIG=engagements/madi_onboarding/ratchet.real.toml
 uv run python engagements/madi_onboarding/download_data.py
 uv run python engagements/madi_onboarding/csv_to_ingest.py --source forbes
 uv run python engagements/madi_onboarding/prepare_real_eval.py
@@ -92,7 +92,7 @@ Read the [real-data baseline](engagements/madi_onboarding/runs/real_forbes/READM
 | Evaluator result differs from a receipt | Check which adapter or rule snapshot is installed and which prior evaluator output was used as `--baseline`. |
 | Protected-path rejection | Confirm the edit targets an adapter or rule, not fixtures, gold, engines, evaluator, or `runs/`. |
 | Implementer reports a denied read | Expected for gold, fixtures, and `runs/`. If an ordinary source file is denied, check `[protected].unreadable` in the active configuration. |
-| Every implementer read is denied, including app source | `FLYWHEEL_CONFIG` was not set in Claude Code's environment at launch. The read guard fails closed rather than guessing an engagement. Exit, export it, relaunch. |
+| Every implementer read is denied, including app source | `RATCHET_CONFIG` was not set in Claude Code's environment at launch. The read guard fails closed rather than guessing an engagement. Exit, export it, relaunch. |
 | `no cycle in progress` | `cycle_log.py mark` ran before `cycle_log.py start`. Start a cycle, or ignore it if you are not measuring. |
 
 For another API, use the [adaptation guide](docs/ADAPTING.md).

@@ -3,7 +3,7 @@
 **Purpose:** onboard MaDI-Bench's real `forbes` source from an empty adapter,
 through both human gates, with every cycle receipted.
 
-`flywheel.real.toml` selects MaDI-Bench's 2,000-record Forbes CSV, its
+`ratchet.real.toml` selects MaDI-Bench's 2,000-record Forbes CSV, its
 schema-mapping gold, and `adapters_real/forbes.toml`. The real raw columns
 share no names with the synthetic Forbes fixture, so this is a separate
 mapping task, not a subsample of the development data. Unlike `fullcontact`
@@ -98,7 +98,7 @@ cumulative usage log.
 ## Reproduce
 
 ```bash
-export FLYWHEEL_CONFIG=engagements/madi_onboarding/flywheel.real.toml
+export RATCHET_CONFIG=engagements/madi_onboarding/ratchet.real.toml
 uv run python engagements/madi_onboarding/download_data.py
 uv run python engagements/madi_onboarding/csv_to_ingest.py --source forbes
 uv run python engagements/madi_onboarding/prepare_real_eval.py

@@ -9,7 +9,7 @@ It is generic by construction: a new endpoint is exercised automatically with no
 hand-editing, as long as it is described in /openapi.json. Non-JSON request media
 types are not synthesized.
 
-Replay mode (`--replay FILE`, or `[traffic].replay_file` in flywheel.toml): fires
+Replay mode (`--replay FILE`, or `[traffic].replay_file` in ratchet.toml): fires
 a fixed list of recorded request specs instead of synthesizing them, so a run is
 reproducible. Each line of the replay file is one spec:
 
@@ -30,7 +30,7 @@ comes from whatever produced the file.
 Usage:
     python scripts/simulate.py [BASE_URL] [N_REQUESTS] [--replay FILE] [--run-id ID]
 
-Defaults come from flywheel.toml ([app].base_url, [simulator].default_requests,
+Defaults come from ratchet.toml ([app].base_url, [simulator].default_requests,
 [traffic].replay_file).
 """
 import argparse
@@ -43,7 +43,7 @@ from urllib.parse import urljoin, urlsplit
 from uuid import uuid4
 
 import httpx
-from flywheel_config import load_config
+from ratchet_config import load_config
 
 CONFIG = load_config()
 

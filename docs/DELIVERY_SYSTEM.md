@@ -2,7 +2,7 @@
 
 **Reader:** an engineer assessing whether the loop is reusable, testable, and bounded.
 
-`dev-flywheel` turns an observed API failure into a reviewed change. The design treats agent output as an input to a control system. It does not treat an agent as an autonomous deployer.
+`ratchet` turns an observed API failure into a reviewed change. The design treats agent output as an input to a control system. It does not treat an agent as an autonomous deployer.
 
 ## The decisions behind the design
 
@@ -87,7 +87,7 @@ The loop closes when the simulator can discover the result of a shipped change f
 | Structured edits | implementer | `apply_edits.py` | Supplies an exact, reviewable mutation request. |
 | Evaluator JSON | independent scorer | Gate 2 | Separates request success from domain progress and regression. |
 | Cycle JSONL | orchestrator | `cycle_log.py report` | Records what each cycle cost and what it bought, so delivery claims are numbers. |
-| `flywheel.toml` | operator | loop | Selects the app, analyzer, evaluator, paths, traffic, and protected assets. |
+| `ratchet.toml` | operator | loop | Selects the app, analyzer, evaluator, paths, traffic, and protected assets. |
 
 ## Reuse boundary
 
@@ -95,8 +95,8 @@ The generic layer owns traffic generation, configuration loading, edit validatio
 
 The seam is configuration rather than a fork. This repository exercises it with two MaDI configurations:
 
-- `flywheel.toml` selects the synthetic development split and evaluator.
-- `flywheel.real.toml` selects the separate real-data source, oracle, and adapter surface.
+- `ratchet.toml` selects the synthetic development split and evaluator.
+- `ratchet.real.toml` selects the separate real-data source, oracle, and adapter surface.
 
 Two configurations against one app is weak evidence for a domain-free loop on its own; both share an API. The stronger evidence is a CI step that clears the engagement configuration entirely and runs the simulator against the live app with no domain knowledge available to it. Discovery still reaches `/ingest` and `/reconcile` from `/openapi.json` alone, and a transport-level exception fails the job. That is the generic layer working with the engagement layer switched off.
 

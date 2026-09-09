@@ -13,12 +13,12 @@ from cycle_log import durations, edit_stats, main, metric_deltas, summarize
 
 @pytest.fixture
 def cycle(tmp_path, monkeypatch):
-    cfg = tmp_path / "flywheel.toml"
+    cfg = tmp_path / "ratchet.toml"
     cfg.write_text(
         '[app]\nmodule = "demo:app"\ncycle_log = "runs/delivery/cycles.jsonl"\n'
         "\n[protected]\npaths = []\nunreadable = []\n"
     )
-    monkeypatch.setenv("FLYWHEEL_CONFIG", str(cfg))
+    monkeypatch.setenv("RATCHET_CONFIG", str(cfg))
     monkeypatch.chdir(tmp_path)
     return tmp_path
 

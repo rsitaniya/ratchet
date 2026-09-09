@@ -26,13 +26,13 @@ def repo(tmp_path, monkeypatch):
     (tmp_path / "engagements/demo/runs").mkdir(parents=True)
     (tmp_path / "engagements/demo/runs/01_cycle1.adapter.toml").write_text("converged = true\n")
 
-    cfg = tmp_path / "flywheel.toml"
+    cfg = tmp_path / "ratchet.toml"
     cfg.write_text(
         '[app]\nmodule = "demo:app"\n\n[protected]\npaths = []\nunreadable = '
         + json.dumps(GLOBS)
         + "\n"
     )
-    monkeypatch.setenv("FLYWHEEL_CONFIG", str(cfg))
+    monkeypatch.setenv("RATCHET_CONFIG", str(cfg))
     monkeypatch.chdir(tmp_path)
     return tmp_path
 
@@ -98,22 +98,22 @@ def test_nonexistent_protected_path_is_still_denied(repo):
 
 
 def test_no_config_fails_closed(repo, monkeypatch):
-    monkeypatch.delenv("FLYWHEEL_CONFIG")
-    (repo / "flywheel.toml").unlink()
+    monkeypatch.delenv("RATCHET_CONFIG")
+    (repo / "ratchet.toml").unlink()
     assert run("Read", {"file_path": "engagements/demo/adapters/forbes.toml"}) == 2
 
 
 def test_missing_configured_file_fails_closed(repo, monkeypatch):
-    monkeypatch.setenv("FLYWHEEL_CONFIG", str(repo / "nope.toml"))
+    monkeypatch.setenv("RATCHET_CONFIG", str(repo / "nope.toml"))
     assert run("Read", {"file_path": "engagements/demo/adapters/forbes.toml"}) == 2
 
 
 def test_empty_unreadable_list_allows_everything(tmp_path, monkeypatch):
     """An explicit empty list is a choice; a missing config is not (above)."""
-    cfg = tmp_path / "flywheel.toml"
+    cfg = tmp_path / "ratchet.toml"
     cfg.write_text('[app]\nmodule = "demo:app"\n\n[protected]\npaths = []\nunreadable = []\n')
     (tmp_path / "gold_mapping.json").write_text("{}")
-    monkeypatch.setenv("FLYWHEEL_CONFIG", str(cfg))
+    monkeypatch.setenv("RATCHET_CONFIG", str(cfg))
     monkeypatch.chdir(tmp_path)
     assert run("Read", {"file_path": "gold_mapping.json"}) == 0
 
@@ -143,9 +143,9 @@ def test_grep_with_no_path_is_allowed_when_nothing_is_held_out(tmp_path, monkeyp
     of every unnamed target -- otherwise the fix would break ordinary greps."""
     (tmp_path / "src").mkdir()
     (tmp_path / "src/app.py").write_text("app = 1\n")
-    cfg = tmp_path / "flywheel.toml"
+    cfg = tmp_path / "ratchet.toml"
     cfg.write_text('[app]\nmodule = "demo:app"\n\n[protected]\nunreadable = ["**/fixtures/**"]\n')
-    monkeypatch.setenv("FLYWHEEL_CONFIG", str(cfg))
+    monkeypatch.setenv("RATCHET_CONFIG", str(cfg))
     monkeypatch.chdir(tmp_path)
     assert run("Grep", {"pattern": "app"}) == 0
 
@@ -167,6 +167,6 @@ def test_walk_skips_noise_directories(repo):
 
 def test_the_real_engagement_config_holds_out_gold(monkeypatch):
     """Not a synthetic config: the boundary the shipped engagement actually declares."""
-    monkeypatch.setenv("FLYWHEEL_CONFIG", "engagements/madi_onboarding/flywheel.toml")
+    monkeypatch.setenv("RATCHET_CONFIG", "engagements/madi_onboarding/ratchet.toml")
     assert run("Read", {"file_path": "engagements/madi_onboarding/fixtures/gold_records.jsonl"}) == 2
     assert run("Read", {"file_path": "engagements/madi_onboarding/adapters/forbes.toml"}) == 0
