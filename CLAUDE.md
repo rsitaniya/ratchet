@@ -1,4 +1,4 @@
-# ratchet — Agentic Dev Loop
+# Ratchet — Agentic Dev Loop
 
 The orchestration, traffic generation, structured-edit validation, and gates are domain-free;
 everything domain-specific is named in one `ratchet.toml` and an

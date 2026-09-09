@@ -1,4 +1,4 @@
-# ratchet
+# Ratchet
 
 **A controlled delivery loop for agent-assisted integration work.**
 
