@@ -7,8 +7,8 @@ tests pin the multi-app behavior:
   - non-path keys (module, base_url) are left untouched,
   - $RATCHET_CONFIG and an explicit path argument both select the config.
 """
-import ratchet_config
 import pytest
+import ratchet_config
 
 
 def _write_config(tmp_path, body: str):
